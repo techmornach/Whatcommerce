@@ -1,0 +1,26 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+node_modules/
+apps/wa-bridge/.wwebjs_auth/
+apps/wa-bridge/.wwebjs_cache/
+*.log
+.DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
