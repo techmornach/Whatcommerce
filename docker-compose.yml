@@ -1,32 +1,19 @@
 services:
-  api:
-    build:
-      context: ./apps/api
-    ports:
-      - "8000:8000"
+  postgres:
+    image: postgres:16-alpine
     environment:
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-change-me-in-dev}
-      DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID:-dev-tenant-1}
-      BRIDGE_BASE_URL: http://wa-bridge:3001
-
-  wa-bridge:
-    build:
-      context: ./apps/wa-bridge
+      POSTGRES_USER: whatcommerce
+      POSTGRES_PASSWORD: whatcommerce
+      POSTGRES_DB: whatcommerce
     ports:
-      - "3001:3001"
-    environment:
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-change-me-in-dev}
-      DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID:-dev-tenant-1}
-      BRIDGE_HOST: 0.0.0.0
-      BRIDGE_PORT: 3001
-      API_BASE_URL: http://api:8000
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-    depends_on:
-      - api
+      - "5433:5432"
     volumes:
-      - wa_auth:/app/.wwebjs_auth
-      - wa_cache:/app/.wwebjs_cache
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatcommerce -d whatcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  wa_auth:
-  wa_cache:
+  postgres_data:
