@@ -1,12 +1,6 @@
 locals {
   tags = merge(var.tags, { Module = "iam_ci" })
-  asg_arns = [
-    for n in var.autoscaling_group_names :
-    "arn:aws:autoscaling:${var.aws_region}:${data.aws_caller_identity.current.account_id}:autoScalingGroup:*:autoScalingGroupName/${n}"
-  ]
 }
-
-data "aws_caller_identity" "current" {}
 
 data "tls_certificate" "github_oidc" {
   url = "https://token.actions.githubusercontent.com"
@@ -100,17 +94,14 @@ data "aws_iam_policy_document" "deploy_web" {
     resources = ["*"]
   }
 
-  dynamic "statement" {
-    for_each = length(local.asg_arns) > 0 ? [1] : []
-    content {
-      sid    = "AutoScalingRefresh"
-      effect = "Allow"
-      actions = [
-        "autoscaling:StartInstanceRefresh",
-        "autoscaling:CancelInstanceRefresh",
-      ]
-      resources = local.asg_arns
-    }
+  statement {
+    sid    = "AutoScalingRefresh"
+    effect = "Allow"
+    actions = [
+      "autoscaling:StartInstanceRefresh",
+      "autoscaling:CancelInstanceRefresh",
+    ]
+    resources = ["*"]
   }
 }
 

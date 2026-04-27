@@ -28,17 +28,6 @@ variable "cloudfront_distribution_arn" {
   type        = string
 }
 
-variable "aws_region" {
-  description = "AWS region for autoscaling ARN construction"
-  type        = string
-}
-
-variable "autoscaling_group_names" {
-  description = "ASG names GitHub CI can refresh"
-  type        = list(string)
-  default     = []
-}
-
 variable "tags" {
   description = "Common tags"
   type        = map(string)

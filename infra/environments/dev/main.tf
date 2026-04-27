@@ -283,15 +283,10 @@ module "web_static_site" {
 module "iam_ci" {
   source = "../../modules/iam_ci"
 
-  name          = "${local.name}-web"
-  github_owner  = var.github_owner
-  github_repo   = var.github_repo
-  github_branch = var.github_deploy_branch
-  aws_region    = var.aws_region
-  autoscaling_group_names = compact([
-    module.api_asg.autoscaling_group_name,
-    var.worker_enabled ? module.worker_asg[0].autoscaling_group_name : null,
-  ])
+  name                        = "${local.name}-web"
+  github_owner                = var.github_owner
+  github_repo                 = var.github_repo
+  github_branch               = var.github_deploy_branch
   s3_bucket_arn               = module.web_static_site.bucket_arn
   cloudfront_distribution_arn = module.web_static_site.cloudfront_distribution_arn
   tags                        = local.common_tags
