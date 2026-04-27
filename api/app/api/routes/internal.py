@@ -44,6 +44,7 @@ def inbound_message(
             wa_chat_id=payload.from_wa_id,
             body=payload.body,
             message_type=payload.message_type,
+            message_id=payload.message_id,
             media_mimetype=payload.media_mimetype,
             media_base64=payload.media_base64,
         )

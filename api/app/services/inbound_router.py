@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import User
+from app.models import ConversationEvent, User
 from app.services.conversation_store import append_event
 from app.services.media_ingest import normalize_inbound
 from app.services.onboarding_fsm import process_inbound_onboarding
@@ -85,12 +85,32 @@ def _append_assistant_transcript(
     )
 
 
+def _is_duplicate_inbound_message(
+    db: Session, *, wa_chat_id: str, message_id: str | None
+) -> bool:
+    mid = (message_id or "").strip()
+    if not mid:
+        return False
+    row = (
+        db.execute(
+            select(ConversationEvent.id).where(
+                ConversationEvent.wa_chat_id == wa_chat_id,
+                ConversationEvent.role == "user",
+                ConversationEvent.event_metadata["message_id"].astext == mid,
+            )
+        )
+        .first()
+    )
+    return row is not None
+
+
 def process_inbound_whatsapp(
     db: Session,
     *,
     wa_chat_id: str,
     body: str,
     message_type: str | None = None,
+    message_id: str | None = None,
     media_mimetype: str | None = None,
     media_base64: str | None = None,
 ) -> list[str]:
@@ -106,6 +126,14 @@ def process_inbound_whatsapp(
             "Could not read your phone number from this chat. Try again from your phone."
         ]
 
+    if _is_duplicate_inbound_message(db, wa_chat_id=wa_chat_id, message_id=message_id):
+        logger.info(
+            "inbound dedupe: ignored duplicate message_id=%s chat=%s",
+            message_id,
+            wa_chat_id,
+        )
+        return []
+
     canonical, kind, ev_meta, image_raw = normalize_inbound(
         settings,
         body=body,
@@ -113,6 +141,8 @@ def process_inbound_whatsapp(
         media_mimetype=media_mimetype,
         media_base64=media_base64,
     )
+    if message_id:
+        ev_meta = {**ev_meta, "message_id": message_id}
     if ev_meta.get("empty") and not (canonical or "").strip():
         return [
             "Please send a *text* message, *voice* note, or *image* to continue."

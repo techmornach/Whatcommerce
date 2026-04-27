@@ -33,6 +33,20 @@ const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || "";
 const DISPATCH_PORT = process.env.DISPATCH_PORT || "3001";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const BRIDGE_HEARTBEAT_MS = 45_000;
+const INBOUND_DEDUPE_TTL_MS = 5 * 60 * 1000;
+const seenInboundMessageIds = new Map();
+
+function seenRecently(messageId) {
+  const id = String(messageId || "").trim();
+  if (!id) return false;
+  const now = Date.now();
+  for (const [k, ts] of seenInboundMessageIds.entries()) {
+    if (now - ts > INBOUND_DEDUPE_TTL_MS) seenInboundMessageIds.delete(k);
+  }
+  if (seenInboundMessageIds.has(id)) return true;
+  seenInboundMessageIds.set(id, now);
+  return false;
+}
 
 async function postBridgeReport({ status, message, qr_data, phone_e164 }) {
   const body = {
@@ -193,9 +207,14 @@ client.on("ready", () => {
 
 client.on("message", async (msg) => {
   if (msg.from === "status@broadcast") return;
+  if (msg.fromMe) return;
   const from = msg.from || "";
   const body = msg.body || "";
   const messageId = msg.id?._serialized || null;
+  if (seenRecently(messageId)) {
+    console.log("Skipping duplicate inbound message", String(messageId).slice(0, 40));
+    return;
+  }
   const messageType = (msg.type || "chat").toString();
   const payload = {
     from_wa_id: from,
