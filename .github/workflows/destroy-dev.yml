@@ -1,0 +1,81 @@
+name: Destroy Dev Infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type destroy-dev to confirm infrastructure teardown"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: destroy-dev-infra
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION_DEV: ${{ vars.AWS_REGION_DEV }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra/environments/dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate confirmation and required settings
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy-dev" ]; then
+            echo "::error::Confirmation mismatch. Type exactly: destroy-dev"
+            exit 1
+          fi
+
+          missing=0
+          for name in AWS_REGION_DEV; do
+            value="$(echo "${!name:-}" | tr -d '[:space:]')"
+            value_lc="$(echo "$value" | tr '[:upper:]' '[:lower:]')"
+            if [ -z "$value" ] || [ "$value_lc" = "null" ] || [ "$value_lc" = "none" ] || [ "$value_lc" = "undefined" ]; then
+              echo "::error::Missing/invalid repository variable: $name"
+              missing=1
+            fi
+          done
+
+          if [ -z "${{ secrets.AWS_ROLE_ARN_DEV }}" ]; then
+            echo "::error::Missing required repository secret: AWS_ROLE_ARN_DEV"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "Set required vars/secrets in GitHub repo settings and rerun."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          aws-region: ${{ env.AWS_REGION_DEV }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform destroy (auto-approve)
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Output summary
+        run: |
+          {
+            echo "## Dev Infra Destroyed"
+            echo "- Region: \`${AWS_REGION_DEV}\`"
+            echo "- Triggered by: \`${{ github.actor }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
