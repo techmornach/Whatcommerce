@@ -15,7 +15,7 @@ WhatsApp-first commerce for small vendors: **FastAPI** backend, **Next.js** mark
    ```bash
    cp .env.example .env
    uv sync
-   uv run alembic upgrade head
+   uv run alembic upgrade heads
    uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
@@ -26,7 +26,7 @@ WhatsApp-first commerce for small vendors: **FastAPI** backend, **Next.js** mark
 3. **Web** (from `web/`):
 
    ```bash
-   cp .env.local.example .env.local
+   echo "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000" > .env.local
    npm install
    npm run dev
    ```
@@ -56,6 +56,9 @@ WhatsApp-first commerce for small vendors: **FastAPI** backend, **Next.js** mark
 
 ## Docs
 
+- [SETUP.md](SETUP.md) — full local setup guide for fresh clones
+- [deployment.md](deployment.md) — infrastructure + CI/CD deployment runbook
 - [Planning.md](Planning.md) — product notes
-- [architecture.md](architecture.md) — system outline
+- [architecture.md](architecture.md) — application architecture and runtime flows
+- [deploy_architecture.md](deploy_architecture.md) — AWS deployment architecture (VPC, subnets, ALB, ASGs, RDS, CloudFront)
 - [feature_list.md](feature_list.md) — checklist
