@@ -31,6 +31,7 @@ npm-debug.log*
 # WhatsApp
 .wwebjs_auth/
 .wwebjs_cache/
+.wwebjs/
 
 # IDE
 .idea/
