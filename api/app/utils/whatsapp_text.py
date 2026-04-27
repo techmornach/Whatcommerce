@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlparse
 
 _MD_BOLD = re.compile(r"\*\*([^*]+?)\*\*")
 _MD_IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
@@ -9,10 +10,19 @@ def _normalize_url(url: str, public_api_base_url: str | None) -> str:
     u = (url or "").strip()
     if not u:
         return u
+    base = (public_api_base_url or "").strip().rstrip("/")
+    # Repair malformed model output like: https://files/products/...
+    # This should map to the API file route: <PUBLIC_API_BASE_URL>/files/products/...
+    if u.startswith(("http://", "https://")):
+        try:
+            p = urlparse(u)
+            if p.netloc == "files" and p.path.startswith("/products/") and base:
+                return f"{base}/files{p.path}"
+        except Exception:
+            pass
     if u.startswith(("http://", "https://")):
         return u
     if u.startswith("/"):
-        base = (public_api_base_url or "").strip().rstrip("/")
         if base:
             return f"{base}{u}"
     return u
