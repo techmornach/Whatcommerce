@@ -19,8 +19,6 @@ class OrderStatus(StrEnum):
 
 
 class OnboardingState(StrEnum):
-    """WhatsApp onboarding FSM (per chat)."""
-
     ask_name = "ask_name"
     ask_business = "ask_business"
     ask_address = "ask_address"

@@ -41,10 +41,6 @@ async def paystack_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    """
-    Paystack sends JSON. We verify HMAC (SHA-512) with the secret key, then
-    idempotently activate tenants on charge.success.
-    """
     raw = await request.body()
     sig = request.headers.get("X-Paystack-Signature", "")
     secret = _hmac_secret()
@@ -72,5 +68,4 @@ async def paystack_webhook(
         ) from e
 
     out = process_paystack_payload(db, payload)
-    # Paystack expects 2xx; always return 200 on verified payloads to avoid blind retries
     return {**{k: str(v) for k, v in out.items()}, "status": "ok"}

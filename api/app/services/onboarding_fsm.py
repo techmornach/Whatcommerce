@@ -1,9 +1,3 @@
-"""
-WhatsApp signup for users without an active tenant. Uses an LLM + tools
-(`onboarding_agent`) for natural dialogue; durable state lives in
-`OnboardingSession` and tools in `onboarding_tools`.
-"""
-
 from sqlalchemy.orm import Session
 
 from app.services.onboarding_agent import run_onboarding_agent

@@ -1,5 +1,3 @@
-"""Read boolean feature flags from `platform_settings` (admin-togglable)."""
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,7 +6,6 @@ from app.models import PlatformSetting
 KEY_OUTPUT_GUARD = "agent_output_guard_enabled"
 KEY_HUMANIZER = "agent_humanizer_enabled"
 
-# Defaults when the row is missing (e.g. old DB before seed).
 DEFAULT_OUTPUT_GUARD = True
 DEFAULT_HUMANIZER = False
 

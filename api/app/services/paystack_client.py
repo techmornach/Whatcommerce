@@ -15,10 +15,6 @@ def initialize_transaction(
     reference: str,
     metadata: dict[str, Any],
 ) -> tuple[str, str]:
-    """
-    Create a Paystack payment URL. Returns (authorization_url, reference).
-    With no secret key (dev), returns a placeholder URL and the same reference.
-    """
     settings = get_settings()
     secret = settings.paystack_secret_key
     amount_kobo = max(1, int(amount_ngn)) * 100

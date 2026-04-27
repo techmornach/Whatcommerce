@@ -1,12 +1,3 @@
-/**
- * Whatcommerce WhatsApp Web bridge (stub)
- *
- * 1) npm install
- * 2) Set API base + INTERNAL_API_KEY in .env (copy from .env.example)
- * 3) node index.mjs  — scan QR, then text messages are POSTed to the API
- *
- * Full OpenAI agent + session store integration comes next.
- */
 import http from "http";
 import wweb from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
@@ -43,13 +34,6 @@ const DISPATCH_PORT = process.env.DISPATCH_PORT || "3001";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const BRIDGE_HEARTBEAT_MS = 45_000;
 
-/**
- * @param {object} opts
- * @param {string} opts.status
- * @param {string | null} [opts.message]
- * @param {string | null} [opts.qr_data] — raw QR string when status is qr (admin UI shows same code)
- * @param {string | null} [opts.phone_e164] — include on first ready after pair; omit on heartbeats so the API keeps the stored number
- */
 async function postBridgeReport({ status, message, qr_data, phone_e164 }) {
   const body = {
     status,
@@ -281,8 +265,6 @@ client.initialize().catch(async (e) => {
   console.error("Failed to start client:", e);
   try {
     await postBridgeReport({ status: "error", message: String(e) });
-  } catch {
-    // best effort only
-  }
+  } catch {}
   process.exit(1);
 });

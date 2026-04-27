@@ -1,11 +1,3 @@
-"""knowledge documents and chunks for RAG
-
-Revision ID: e6f0a1b2c3d4
-Revises: c4d7e2a1b9f0
-Create Date: 2026-04-27
-
-"""
-
 from collections.abc import Sequence
 
 import sqlalchemy as sa

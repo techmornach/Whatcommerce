@@ -1,8 +1,3 @@
-"""
-Tool implementations for the WhatsApp store manager (called via OpenAI function calling).
-All mutations commit so follow-up tool calls see fresh data.
-"""
-
 import json
 import logging
 from typing import Any
@@ -320,10 +315,6 @@ def _tool_describe_product_image(
     image_url: str | None,
     product_id: int | None,
 ) -> dict[str, Any]:
-    """
-    Vision-based catalog blurb for an image stored under this tenant's /files/products/...
-    or the first image on a product row.
-    """
     settings = get_settings()
     if not (settings.openai_api_key or "").strip():
         return {"ok": False, "error": "OPENAI_API_KEY not set"}

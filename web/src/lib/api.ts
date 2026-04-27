@@ -89,7 +89,6 @@ export async function adminRequest<T>(
   return (await r.json()) as T;
 }
 
-/** Multipart upload (e.g. knowledge base PDF/MD). Do not set Content-Type manually. */
 export async function adminUpload<T>(
   path: string,
   token: string | null,
@@ -115,9 +114,7 @@ export async function adminUpload<T>(
       } else if (Array.isArray(j.detail)) {
         msg = j.detail.map(String).join(" ");
       }
-    } catch {
-      /* keep msg = raw */
-    }
+    } catch {}
     throw new Error(msg || "Upload failed");
   }
   return (await r.json()) as T;

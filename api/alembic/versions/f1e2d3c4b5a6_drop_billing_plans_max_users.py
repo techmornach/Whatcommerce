@@ -1,11 +1,3 @@
-"""drop max_users from billing_plans
-
-Revision ID: f1e2d3c4b5a6
-Revises: 8b2a3c0d1e2f
-Create Date: 2026-04-27
-
-"""
-
 from collections.abc import Sequence
 
 import sqlalchemy as sa

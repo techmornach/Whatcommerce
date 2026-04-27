@@ -104,10 +104,6 @@ async def create_doc_from_upload(
     _: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> DocumentOut:
-    """
-    Import body text from *PDF*, *Markdown* (.md / .markdown), or UTF-8 *plain text* (.txt).
-    Rejects video, images, audio, and other unsupported formats.
-    """
     settings = get_settings()
     max_b = max(256_000, int(settings.knowledge_upload_max_bytes))
     raw = await file.read()

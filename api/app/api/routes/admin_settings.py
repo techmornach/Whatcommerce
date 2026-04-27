@@ -21,8 +21,6 @@ router = APIRouter(prefix="/api/admin/settings", tags=["admin"])
 
 
 class WhatsAppLandingOut(BaseModel):
-    """WhatsApp number comes from the bridge (QR pairing), not manual entry."""
-
     link_state: str
     connected_whatsapp_e164: str | None
     bridge_status: str | None

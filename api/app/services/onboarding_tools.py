@@ -1,5 +1,3 @@
-"""OpenAI tool implementations for LLM-driven onboarding (function calling)."""
-
 import json
 import logging
 from typing import Any
@@ -66,7 +64,6 @@ def _merge_data(session: OnboardingSession, **kwargs: object) -> None:
 
 
 def sync_state_from_data(session: OnboardingSession) -> None:
-    """Keep FSM state aligned for admin/DB; do not undo payment_sent or complete."""
     if session.state in (OnboardingState.payment_sent, OnboardingState.complete):
         return
     d = dict(session.data or {})

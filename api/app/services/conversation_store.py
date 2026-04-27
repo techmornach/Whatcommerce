@@ -39,7 +39,6 @@ def append_event(
 def load_openai_messages(
     db: Session, *, phone_e164: str, tenant_id: int | None, limit: int = 32
 ) -> list[dict[str, str]]:
-    """Load recent user/assistant turns for the LLM, oldest first. tenant_id None = onboarding."""
     q = select(ConversationEvent).where(ConversationEvent.phone_e164 == phone_e164)
     if tenant_id is None:
         q = q.where(ConversationEvent.tenant_id.is_(None))

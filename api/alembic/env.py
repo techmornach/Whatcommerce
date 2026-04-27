@@ -5,7 +5,6 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Ensure 'app' is importable when running alembic from api/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 from app.core.config import get_settings
@@ -26,7 +25,6 @@ from app.models import (  # noqa: F401
     User,
 )
 
-# Import metadata from models
 _ = (
     AdminUser,
     BillingPlan,

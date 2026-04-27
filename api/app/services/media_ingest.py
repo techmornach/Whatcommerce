@@ -105,17 +105,11 @@ def normalize_inbound(
     media_mimetype: str | None,
     media_base64: str | None,
 ) -> tuple[str, str, dict[str, Any], bytes | None]:
-    """
-    Return (canonical_text, kind, event_metadata, image_raw_bytes or None).
-    `kind` is one of: text, voice, image, other.
-    For successfully decoded inbound images, `image_raw_bytes` is set (for server-side save).
-    """
     body = (body or "").strip()
     mtype = (message_type or "chat").lower().strip() or "chat"
     has_media = bool((media_base64 or "").strip())
     max_b = int(settings.inbound_media_max_bytes)
 
-    # ——— Text only ———
     if not has_media:
         if mtype in CHAT_LIKE or mtype == "chat":
             return body, "text", {"mtype": mtype}, None
@@ -146,7 +140,6 @@ def normalize_inbound(
             return body, "text", {"mtype": mtype}, None
         return "", "text", {"empty": True, "mtype": mtype}, None
 
-    # ——— With media (base64) ———
     raw, err = _decode_media_b64(media_base64 or "", max_bytes=max_b)
     if err:
         meta = {
@@ -217,7 +210,6 @@ def normalize_inbound(
             "mtype": mtype,
         }, raw
 
-    # media present but type unclear: sniff by mimetype
     if _is_video_mimetype(media_mimetype):
         return (
             "We do not process *video* in chat yet. Please send a *photo* or *text*.",

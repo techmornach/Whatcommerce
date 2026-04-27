@@ -381,9 +381,9 @@ export function DashboardClient({ section = "overview" }: { section?: AdminSecti
           </div>
 
           <div className="mb-7">
-            <h1 className="text-2xl font-semibold text-white">Super admin</h1>
+            <h1 className="text-2xl font-semibold text-white">Admin dashboard</h1>
             <p className="mt-1 text-sm text-zinc-400">
-              Black-and-white operations control panel with dedicated pages.
+              Manage WhatsApp, plans, knowledge, and tenant activity from one place.
             </p>
           </div>
 
@@ -416,8 +416,8 @@ export function DashboardClient({ section = "overview" }: { section?: AdminSecti
                   API endpoint: <code className="text-zinc-200">{getApiBaseUrl()}</code>
                 </p>
                 <p className="mt-2 text-sm text-zinc-400">
-                  Use the sidebar to manage WhatsApp linking, agent guardrails, knowledge,
-                  plan pricing, and tenant activity in separate pages.
+                  Use the menu to jump between WhatsApp setup, agent controls, knowledge,
+                  pricing, and tenants.
                 </p>
               </section>
             </>
@@ -427,9 +427,8 @@ export function DashboardClient({ section = "overview" }: { section?: AdminSecti
             <section className={`${panelClass} mb-8`}>
               <h2 className="mb-2 text-lg font-medium text-white">WhatsApp bot &amp; public landing</h2>
               <p className="mb-4 text-sm text-zinc-400">
-                The public site uses the number from the bridge after you pair with QR. You do
-                not enter a phone number here—scan the code below when the bridge is showing
-                a QR.
+                After QR pairing, the public site automatically uses the connected WhatsApp
+                number. You do not need to type a number here.
               </p>
               {wa && token ? (
                 <WhatsAppLinkPanel
@@ -447,11 +446,10 @@ export function DashboardClient({ section = "overview" }: { section?: AdminSecti
             <section className={`${panelClass} mb-8`}>
               <h2 className="mb-2 text-lg font-medium text-white">WhatsApp agent: safety &amp; tone</h2>
               <p className="mb-4 max-w-2xl text-sm text-zinc-400">
-                After the main model runs, the API can (1) block unsafe outbound text, and
-                (2) optionally *humanize* cold or robotic lines. Configure models in{" "}
+                Control how outgoing replies are checked and polished. You can block unsafe
+                messages and optionally smooth tone before send. Configure models in{" "}
                 <code className="text-zinc-200">OPENAI_OUTPUT_GUARD_MODEL</code> and{" "}
-                <code className="text-zinc-200">OPENAI_HUMANIZER_MODEL</code> (defaults to the
-                main OpenAI model).
+                <code className="text-zinc-200">OPENAI_HUMANIZER_MODEL</code>.
               </p>
               {token && agentPipeline ? (
                 <AgentPipelinePanel
@@ -548,7 +546,7 @@ export function DashboardClient({ section = "overview" }: { section?: AdminSecti
                 <p className="text-sm text-zinc-400">
                   {tenantQuery.trim()
                     ? "No tenants match that search."
-                    : "No tenants yet. Onboard via bot."}
+                    : "No tenants yet. New signups will appear here."}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -650,9 +648,8 @@ function KnowledgeSection({
       )}
       <div className="flex justify-between items-center">
         <p className="text-sm text-zinc-500 max-w-lg">
-          Published documents are chunked and embedded for the store manager
-          (search_platform_knowledge). You can paste text or import PDF, Markdown (.md),
-          or .txt; video and other formats are rejected.
+          Published documents are indexed for assistant search. You can paste text or upload
+          PDF, Markdown (.md), or .txt files.
         </p>
         <button
           type="button"
@@ -818,8 +815,8 @@ function KbForm({
           />
           {importFile && (
             <p className="mt-1 text-xs text-zinc-400">
-              Saving will create the article from this file (body field below is ignored until
-              you clear the file).
+              Saving will create this article from the uploaded file. The body field is ignored
+              until you remove the file.
             </p>
           )}
         </div>
@@ -839,7 +836,7 @@ function KbForm({
           checked={isPublished}
           onChange={(e) => setIsPublished(e.target.checked)}
         />
-        Published (included in RAG for the agent)
+        Published (available to assistant search)
       </label>
       <div className="flex gap-2">
         <button
@@ -908,8 +905,8 @@ function AgentPipelinePanel({
       <label className="block text-sm">
         <span className="text-zinc-200">Guard alert WhatsApp (E.164)</span>
         <span className="block text-zinc-500 text-xs mt-0.5 mb-1">
-          When input or output guardrails block a message, send a detailed alert to this
-          number (same bridge as bot). Leave empty to disable. Example: +2348012345678
+          Send guard alerts to this number when a message is blocked. Leave empty to turn
+          alerts off. Example: +2348012345678
         </span>
         <input
           type="text"
@@ -931,8 +928,7 @@ function AgentPipelinePanel({
         <span>
           <span className="text-zinc-200">Output safety check</span>
           <span className="block text-zinc-500 text-xs mt-0.5">
-            Block outbound text that would leak system prompts, API keys, or internal
-            rules (JSON classifier; fails open on errors).
+            Checks outgoing replies for unsafe or internal-only content before delivery.
           </span>
         </span>
       </label>
@@ -946,9 +942,8 @@ function AgentPipelinePanel({
         <span>
           <span className="text-zinc-200">Humanize tone</span>
           <span className="block text-zinc-500 text-xs mt-0.5">
-            Optional rewrite pass for curt or robotic replies. Uses{" "}
-            <code className="text-zinc-400">OPENAI_HUMANIZER_MODEL</code> (or the main
-            model). Off by default.
+            Optional rewrite pass to make replies sound more natural and less robotic.
+            Uses <code className="text-zinc-400">OPENAI_HUMANIZER_MODEL</code>.
           </span>
         </span>
       </label>
@@ -1068,7 +1063,7 @@ function WhatsAppLinkPanel({
         )}
         {st === "unknown" && !data.bridge_updated_at && (
           <p className="mt-2 text-zinc-500 text-sm">
-            No status yet. The Node bridge should POST to{" "}
+            No bridge status yet. The Node bridge should POST to{" "}
             <code className="text-zinc-300">/api/internal/bridge-status</code>.
           </p>
         )}
@@ -1077,8 +1072,7 @@ function WhatsAppLinkPanel({
       {data.link_state === "pairing" && data.qr_data && (
         <div>
           <p className="text-sm text-zinc-400 mb-2">
-            Scan with WhatsApp on your phone, or use another device to open WhatsApp and
-            link this number.
+            Scan this QR code from WhatsApp on your phone to finish linking.
           </p>
           <WhatsAppQr value={data.qr_data} />
         </div>
@@ -1101,7 +1095,7 @@ function WhatsAppLinkPanel({
               >
                 {waHref}
               </a>{" "}
-              (same as the homepage CTA)
+              (same link used on the homepage)
             </p>
           )}
         </div>
@@ -1109,16 +1103,16 @@ function WhatsAppLinkPanel({
 
       {data.link_state === "unlinked" && (
         <p className="text-sm text-zinc-500">
-          Start the Whatcommerce bridge. When it shows a QR, this page will display it
-          here—link state will change to &quot;Pairing&quot; automatically.
+          Start the Whatcommerce bridge. When a QR is available, it will appear here and
+          status will switch to &quot;Pairing&quot;.
         </p>
       )}
 
       <form onSubmit={save} className="space-y-3 max-w-lg border-t border-zinc-800 pt-5">
         <h3 className="text-sm font-medium text-zinc-300">Prefill message (optional)</h3>
         <p className="text-xs text-zinc-500">
-          Suggested first line when a customer opens the public WhatsApp link (stored in
-          settings only; they can edit before send).
+          Default text shown when someone opens your public WhatsApp link. Customers can
+          still edit it before sending.
         </p>
         <div>
           <label className="text-xs text-zinc-500">Prefill</label>
@@ -1142,7 +1136,7 @@ function WhatsAppLinkPanel({
           disabled={saving}
           className="rounded-md bg-zinc-100 text-zinc-950 text-sm font-medium px-4 py-2 disabled:opacity-50"
         >
-          {saving ? "Saving…" : "Save prefill only"}
+          {saving ? "Saving…" : "Save prefill message"}
         </button>
       </form>
     </div>

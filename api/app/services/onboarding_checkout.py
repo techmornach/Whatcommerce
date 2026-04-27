@@ -1,5 +1,3 @@
-"""Shared checkout / parsing logic for signup (used by onboarding agent tools)."""
-
 import logging
 import re
 import secrets

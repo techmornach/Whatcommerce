@@ -1,10 +1,3 @@
-"""Allow onboarding FSM state 'complete' (Paystack activation).
-
-Revision ID: 8b2a3c0d1e2f
-Revises: 15e03674ff1e
-Create Date: 2026-04-27
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

@@ -1,7 +1,3 @@
-"""
-Chunk published knowledge documents, embed with OpenAI, and semantic search for the store agent.
-"""
-
 from __future__ import annotations
 
 import json
@@ -21,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 def chunk_text(text: str, *, max_chars: int, overlap: int) -> list[str]:
-    """Sliding-window chunks for RAG."""
     s = (text or "").strip()
     if not s:
         return []
@@ -64,9 +59,6 @@ def _embed_batch(client: OpenAI, model: str, inputs: list[str]) -> list[list[flo
 def reindex_document(
     db: Session, document_id: int, settings: Settings | None = None
 ) -> int:
-    """
-    Rebuild chunks and embeddings for one document. Returns number of chunks.
-    """
     settings = settings or get_settings()
     doc = db.get(KnowledgeDocument, document_id)
     if doc is None:
@@ -90,7 +82,6 @@ def reindex_document(
     if key:
         try:
             client = OpenAI(api_key=key)
-            # API allows batch embed
             em = _embed_batch(
                 client, settings.openai_embedding_model, [c[:32_000] for c in chunks]
             )
@@ -156,16 +147,12 @@ def _fallback_keyword_hits(
 def search_knowledge(
     db: Session, query: str, settings: Settings | None = None
 ) -> list[dict[str, Any]]:
-    """
-    Return top knowledge snippets (semantic if embeddings available, else keyword).
-    """
     settings = settings or get_settings()
     top_k = max(1, min(settings.knowledge_search_top_k, 20))
     q = (query or "").strip()
     if not q:
         return []
 
-    # Load published chunks with optional embeddings
     rows = (
         db.execute(
             select(KnowledgeChunk, KnowledgeDocument)

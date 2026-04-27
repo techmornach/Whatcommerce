@@ -1,7 +1,3 @@
-"""
-Process Paystack webhook events: idempotent activation on charge.success.
-"""
-
 import logging
 import re
 from datetime import UTC, datetime
@@ -167,7 +163,6 @@ def _handle_charge_success(db: Session, data: dict[str, Any]) -> dict[str, str]:
 
 
 def _handle_charge_failed(db: Session, data: dict[str, Any]) -> dict[str, str]:
-    """Notify user; do not change tenant. Webhook is source of truth for failure."""
     reference = str(data.get("reference") or "").strip()
     if not reference:
         return {"result": "ignored", "reason": "no_reference"}
@@ -277,7 +272,6 @@ def _record_processed(db: Session, reference: str, tenant_id: int) -> None:
 
 
 def mark_onboarding_complete_for_tenant(db: Session, tenant_id: int) -> None:
-    """Set onboarding session to complete when payment succeeds (webhook)."""
     _mark_onboarding_complete_data(db, tenant_id)
 
 

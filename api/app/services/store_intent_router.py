@@ -1,7 +1,3 @@
-"""
-Route store-manager turns: operations (tools/DB) vs analyst (brand, feedback, advice).
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,7 +26,6 @@ _INTENT_SYSTEM = (
     "**operations**."
 )
 
-# Fast path: obvious analyst asks without an extra API call
 _ANALYST_QUICK = re.compile(
     r"(what do you think|your (?:honest )?opinion|constructive feedback|feedback on|"
     r"rate my|review my|critique|how('?s| is) my|thoughts on|advice on|"
@@ -47,9 +42,6 @@ def classify_store_intent(
     last_user_message: str,
     trace_user: str,
 ) -> str:
-    """
-    Return "analyst" or "operations".
-    """
     text = (last_user_message or "").strip()
     if not text:
         return "operations"
@@ -91,7 +83,6 @@ def classify_store_intent(
 
 
 def build_store_analyst_system(settings: Settings, ctx: StoreContext) -> str:
-    """Bundled store analyst prompt + store context (WhatsApp, Nigeria)."""
     override = (getattr(settings, "store_analyst_prompt_path", None) or "").strip()
     bundled = Path(__file__).resolve().parent.parent / "prompts" / "store_analyst.md"
     body: str

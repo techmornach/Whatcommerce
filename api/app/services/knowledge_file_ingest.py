@@ -1,8 +1,3 @@
-"""
-Extract text from allowed knowledge-base uploads (PDF, Markdown, plain text).
-Reject videos, images, and other formats with clear user-facing messages.
-"""
-
 from __future__ import annotations
 
 import io
@@ -82,9 +77,6 @@ def extract_knowledge_file_text(
     raw: bytes,
     content_type: str | None,
 ) -> tuple[str | None, str | None]:
-    """
-    Return (text, error_message). `error_message` is user-facing; `text` is set only on success.
-    """
     if not raw:
         return None, "The uploaded file is empty."
 
@@ -107,21 +99,17 @@ def extract_knowledge_file_text(
     if ext in _OFFICE_EXT:
         return None, _BINARY_OFFICE_MSG
 
-    # PDF
     if ext == ".pdf":
         if not _pdf_magic(raw):
             return None, _UNSUPPORTED_MSG
         return _extract_pdf(raw)
 
-    # Markdown / plain text
     if ext in ALLOWED_TEXT_EXT:
         return _extract_utf8_text(raw)
 
-    # Unknown extension: only accept if raw bytes are a PDF
     if ext and ext not in {".pdf", *ALLOWED_TEXT_EXT}:
         return None, _UNSUPPORTED_MSG
 
-    # ext == "" (no suffix): try PDF then reject
     if not ext:
         if _pdf_magic(raw):
             return _extract_pdf(raw)

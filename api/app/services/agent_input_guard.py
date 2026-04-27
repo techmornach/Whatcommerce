@@ -1,8 +1,3 @@
-"""
-Context-aware input guard: classifies only the *latest* user message as jailbreak/injection,
-using prior user/assistant turns as disambiguation. Fails open on API/parse errors.
-"""
-
 from __future__ import annotations
 
 import json
@@ -77,14 +72,12 @@ def _parse_guard_json(raw: str) -> dict | None:
 
 
 def parse_guard_json(raw: str) -> dict | None:
-    """Parse JSON from a model reply (used by input and output guards)."""
     return _parse_guard_json(raw)
 
 
 def format_transcript_for_guard(
     history: list[dict[str, str]], *, max_chars: int
 ) -> str:
-    """Same formatting as the input-guard API (for reports and display)."""
     return _format_transcript(history, max_chars=max_chars)
 
 
@@ -99,10 +92,6 @@ def evaluate_input_guard(
     settings: Settings,
     history: list[dict[str, str]],
 ) -> InputGuardResult:
-    """
-    Classify latest user message; return block decision and model metadata for reporting.
-    Fails open on errors.
-    """
     if not getattr(settings, "agent_input_guard_enabled", True):
         return InputGuardResult(blocked=False)
     if not (settings.openai_api_key or "").strip():
@@ -174,8 +163,4 @@ def should_block_inbound_message(
     settings: Settings,
     history: list[dict[str, str]],
 ) -> bool:
-    """
-    Return True to block the request (respond with refusal, skip main agent).
-    Returns False on any error, empty history, or disallowed last role (fail open).
-    """
     return evaluate_input_guard(settings, history).blocked

@@ -10,11 +10,6 @@ from app.models.mixins import TimestampMixin
 
 
 class OnboardingSession(TimestampMixin, Base):
-    """
-    One row per WhatsApp chat while the vendor is in the onboarding FSM.
-    Survives process restarts; not used once the tenant is active.
-    """
-
     __tablename__ = "onboarding_sessions"
     __table_args__ = (UniqueConstraint("wa_chat_id", name="uq_onboarding_sessions_wa_chat_id"),)
 

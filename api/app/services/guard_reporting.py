@@ -1,8 +1,3 @@
-"""
-When input/output guards block, optionally notify a platform admin WhatsApp (E.164 in settings).
-Best-effort: failures to send are logged and do not break the user request.
-"""
-
 from __future__ import annotations
 
 import logging

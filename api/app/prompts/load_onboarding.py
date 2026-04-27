@@ -1,9 +1,3 @@
-"""
-Load the onboarding *system* prompt from disk so copy lives outside Python code.
-Optional: set `onboarding_system_prompt_path` in Settings to an absolute file path
-(e.g. mounted ConfigMap) to override the bundled `onboarding_system.md`.
-"""
-
 import logging
 from pathlib import Path
 

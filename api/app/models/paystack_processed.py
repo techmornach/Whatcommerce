@@ -6,10 +6,6 @@ from app.models.mixins import TimestampMixin
 
 
 class PaystackProcessedReference(TimestampMixin, Base):
-    """
-    Idempotency: each Paystack transaction reference is processed at most once.
-    """
-
     __tablename__ = "paystack_processed_references"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

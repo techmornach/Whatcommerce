@@ -1,11 +1,3 @@
-"""product cost/description/images; order customer fields
-
-Revision ID: a7b8c9d0e1f2
-Revises: e6f0a1b2c3d4
-Create Date: 2026-04-27
-
-"""
-
 from typing import Sequence, Union
 
 from alembic import op

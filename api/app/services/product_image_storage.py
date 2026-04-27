@@ -1,8 +1,3 @@
-"""
-Product image storage (local filesystem by default, optional S3 backend).
-URLs are served under /files/products/{tenant_id}/{filename}.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -20,7 +15,6 @@ from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# Paths under the upload root: {tenant_id}/{filename}
 URL_PREFIX = "/files/products"
 
 _MIME_TO_EXT: dict[str, str] = {
@@ -62,7 +56,6 @@ def public_path_for_tenant_file(tenant_id: int, filename: str) -> str:
 
 
 def public_url_for_path(settings: Settings, path: str) -> str:
-    """path starts with /files/products/..."""
     base = (settings.public_api_base_url or "").strip().rstrip("/")
     if not base:
         return path
@@ -97,9 +90,6 @@ def save_product_image(
     raw: bytes,
     mimetype: str | None,
 ) -> str:
-    """
-    Write bytes to disk; return *path* for URLs (/files/products/...).
-    """
     ext = _extension_for_mimetype(mimetype)
     name = f"{uuid.uuid4().hex}.{ext}"
     path = public_path_for_tenant_file(tenant_id, name)
@@ -125,9 +115,6 @@ def save_product_image(
 
 
 def parse_product_image_path(url_or_path: str) -> tuple[int, str] | None:
-    """
-    Accept full URL or path like /files/products/3/abc.jpg -> (3, "abc.jpg").
-    """
     s = (url_or_path or "").strip()
     if not s:
         return None
@@ -199,7 +186,6 @@ def generate_catalog_description(
     *,
     model: str,
 ) -> str:
-    """Short product blurb for a store catalog (WhatsApp-friendly)."""
     b64s = base64.b64encode(raw).decode("ascii")
     mt = mimetype or "image/jpeg"
     if not mt.startswith("image/"):

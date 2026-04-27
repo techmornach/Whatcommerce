@@ -37,18 +37,18 @@ export default function AdminLoginPage() {
             Whatcommerce Admin
           </p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight">
-            Monitor your WhatsApp commerce operations in one place.
+            Run your WhatsApp storefront from one dashboard.
           </h1>
           <p className="mt-4 text-sm text-white/85">
-            Manage plans, knowledge base, tenant activity, and WhatsApp bridge status from
-            a single control center.
+            Manage tenants, plans, knowledge, and bridge status without jumping between
+            tools.
           </p>
         </div>
 
         <div className="p-7 md:p-9">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Admin access</h1>
           <p className="mb-6 text-sm text-slate-600 dark:text-slate-400">
-            Sign in to manage your store operations.
+            Sign in to continue.
           </p>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

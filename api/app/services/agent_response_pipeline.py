@@ -1,9 +1,3 @@
-"""
-Post-process assistant text: optional output guard (safety), optional humanizer (tone).
-Reads toggles from `platform_settings` via `platform_agent_flags`.
-Fails open on guard errors; on humanizer errors returns the pre-humanizer text.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -57,9 +51,6 @@ def _humanizer_model(settings: Settings) -> str:
 def _run_output_guard(
     draft: str, settings: Settings
 ) -> tuple[str, bool, str | None, str | None]:
-    """
-    Returns (text, blocked, category, model_excerpt). If blocked, text is replacement string.
-    """
     if not (settings.openai_api_key or "").strip():
         return draft, False, None, None
     system = _load_text(
@@ -156,10 +147,6 @@ def postprocess_assistant_reply(
     phone_e164: str | None = None,
     flow: Literal["onboarding", "store"] | None = None,
 ) -> str:
-    """
-    Apply output guard and optional humanizer. `draft` is the raw assistant string
-    to send (before chunking for WhatsApp).
-    """
     t = (draft or "").strip()
     if not t:
         return t

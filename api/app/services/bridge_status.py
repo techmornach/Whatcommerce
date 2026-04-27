@@ -49,10 +49,6 @@ def apply_bridge_report(
     qr_data: str | None = None,
     phone_e164: str | None = None,
 ) -> None:
-    """
-    Single transaction: bridge heartbeat + optional QR (pairing) + optional phone (ready).
-    Heartbeat-only posts omit phone_e164 so we do not clear the stored number.
-    """
     st = (status or "error").lower().strip()
     if st not in ("ready", "qr", "error", "init"):
         st = "error"
@@ -83,12 +79,10 @@ def apply_bridge_report(
 
 
 def save_bridge_status(db: Session, status: str, message: str | None = None) -> None:
-    """Backward-compatible: status + message only (used when no extra payload)."""
     apply_bridge_report(db, status=status, message=message)
 
 
 def parse_public_bridge_state(db: Session) -> dict[str, str | None]:
-    """Return {status, message, updated_at, connected_e164, qr_data}."""
     raw = _get_setting_value(db, BRIDGE_STATUS_KEY)
     out: dict[str, str | None] = {
         "status": None,

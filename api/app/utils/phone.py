@@ -4,10 +4,6 @@ _NON_DIGIT = re.compile(r"\D+")
 
 
 def normalize_to_e164(phone: str, default_country: str = "234") -> str:
-    """
-    Coerce common WA inputs to E.164-like storage (leading +, digits only after).
-    Vendors often send 080...; default_country is used when 10–11 local digits.
-    """
     s = (phone or "").strip()
     s = s.replace("whatsapp:", "")
     s = s.split("@", 1)[0]
@@ -26,10 +22,6 @@ def normalize_to_e164(phone: str, default_country: str = "234") -> str:
 
 
 def wa_chat_id_to_phone_e164(wa_chat_id: str, default_country: str = "234") -> str:
-    """
-    WhatsApp private chat ids look like 2348012345678@c.us (no +).
-    Group ids end with @g.us — not valid for E.164 matching; still return best-effort digits.
-    """
     s = (wa_chat_id or "").strip()
     if "@" in s:
         user_part = s.split("@", 1)[0]

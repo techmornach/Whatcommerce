@@ -38,10 +38,6 @@ def inbound_message(
     payload: InboundMessageIn,
     db: Session = Depends(get_db),
 ) -> InboundMessageOut:
-    """
-    Inbound messages from the WhatsApp bridge (text and optional media). Returns bot
-    replies; the bridge should send them to the chat in order.
-    """
     try:
         replies = process_inbound_whatsapp(
             db,
@@ -88,11 +84,6 @@ def post_bridge_state(
     payload: BridgeStateIn,
     db: Session = Depends(get_db),
 ) -> dict:
-    """
-    Heartbeat and session state from the WhatsApp bridge.
-    For status=ready, include phone_e164 once when the session is paired (omit on heartbeats).
-    For status=qr, include qr_data so the admin UI can show the same QR to scan.
-    """
     st = (payload.status or "").lower().strip()
     if st not in ("ready", "qr", "error", "init"):
         st = "error"

@@ -40,7 +40,6 @@ PLANS: list[dict] = [
 DEFAULT_SETTINGS: dict[str, str] = {
     "landing_whatsapp_e164": "+2348000000000",
     "landing_message_prefill": "Hi! I'd like to get started with Whatcommerce.",
-    # Admin-togglable; see `platform_agent_flags` and admin settings API.
     "agent_output_guard_enabled": "true",
     "agent_humanizer_enabled": "false",
     "guard_report_whatsapp_e164": "",
@@ -105,7 +104,7 @@ def create_bootstrap_admin_if_configured(db: Session) -> None:
 
 
 def run_startup_bootstrap() -> None:
-    from app.db.session import SessionLocal  # local import: engine is ready
+    from app.db.session import SessionLocal
 
     with SessionLocal() as db:
         try:

@@ -1,7 +1,3 @@
-"""
-OpenAI function-calling loop for the WhatsApp store manager (active tenants only).
-"""
-
 import json
 import logging
 import uuid

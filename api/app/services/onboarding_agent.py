@@ -1,9 +1,3 @@
-"""
-LLM + tools for new-user signup on WhatsApp. Conversation policy lives in
-`app/prompts/onboarding_system.md` (or `onboarding_system_prompt_path` in Settings);
-user-visible fallbacks in `app/messages/whatsapp_onboarding.py`.
-"""
-
 import json
 import logging
 

@@ -1,8 +1,3 @@
-"""
-Route inbound WhatsApp: normalize media → persist conversation events →
-active subscribers (store manager) or onboarding FSM.
-"""
-
 import logging
 
 from sqlalchemy import select
@@ -30,10 +25,6 @@ def _maybe_append_stored_product_image_url(
     image_raw: bytes | None,
     ev_meta: dict,
 ) -> str:
-    """
-    For active store users, persist inbound product photos on disk and append a public URL
-    to the user transcript so the agent can set product image_urls.
-    """
     if ctx is None or kind != "image" or not image_raw:
         return text
     if ev_meta.get("caption_only"):

@@ -1,11 +1,3 @@
-"""conversation_events
-
-Revision ID: c4d7e2a1b9f0
-Revises: 8b2a3c0d1e2f
-Create Date: 2026-04-27
-
-"""
-
 from collections.abc import Sequence
 
 import sqlalchemy as sa
