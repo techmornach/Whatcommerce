@@ -38,7 +38,7 @@ Clone-friendly setup:
 - set `api_env_file_path` and `worker_env_file_path` to your local `.env` files
 - keep `secrets.auto.tfvars` uncommitted (already gitignored)
 
-## GitHub Actions web deploy wiring (dev)
+## GitHub Actions deploy wiring (dev)
 After apply, set these in your GitHub repository:
 - Secret: `AWS_ROLE_ARN_DEV` -> output `github_oidc_role_arn`
 - Variable: `AWS_REGION_DEV` -> `us-east-1` (or your env region)
@@ -47,6 +47,9 @@ After apply, set these in your GitHub repository:
 - Variable: `WEB_CLOUDFRONT_DOMAIN_DEV` -> output `web_cloudfront_domain_name` (optional, used to print final site URL in workflow summary)
 - Variable: `WORKER_ASG_NAME_DEV` -> output `worker_asg_name`
 - Variable: `NEXT_PUBLIC_API_URL_DEV` -> dev API base URL
+
+Workflow:
+- `.github/workflows/deploy-dev.yml` deploys both web and worker in one run.
 
 ## Next modules to add
 - `worker_asg` wiring for whatcommerce worker service
