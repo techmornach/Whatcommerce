@@ -44,6 +44,7 @@ After apply, set these in your GitHub repository:
 - Variable: `AWS_REGION_DEV` -> `us-east-1` (or your env region)
 - Variable: `WEB_BUCKET_DEV` -> output `web_bucket_name`
 - Variable: `WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV` -> output `web_cloudfront_distribution_id`
+- Variable: `WEB_CLOUDFRONT_DOMAIN_DEV` -> output `web_cloudfront_domain_name` (optional, used to print final site URL in workflow summary)
 - Variable: `WORKER_ASG_NAME_DEV` -> output `worker_asg_name`
 - Variable: `NEXT_PUBLIC_API_URL_DEV` -> dev API base URL
 

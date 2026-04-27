@@ -16,6 +16,12 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION_DEV: ${{ vars.AWS_REGION_DEV }}
+      WEB_BUCKET_DEV: ${{ vars.WEB_BUCKET_DEV }}
+      WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV: ${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV }}
+      WEB_CLOUDFRONT_DOMAIN_DEV: ${{ vars.WEB_CLOUDFRONT_DOMAIN_DEV }}
+      NEXT_PUBLIC_API_URL_DEV: ${{ vars.NEXT_PUBLIC_API_URL_DEV }}
     defaults:
       run:
         shell: bash
@@ -23,6 +29,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate required GitHub variables
+        run: |
+          missing=0
+          for name in AWS_REGION_DEV WEB_BUCKET_DEV WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV NEXT_PUBLIC_API_URL_DEV; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository variable: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Set required vars in GitHub repo settings and rerun."
+            exit 1
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,7 +57,7 @@ jobs:
 
       - name: Build static web
         env:
-          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL_DEV }}
+          NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL_DEV }}
         run: |
           npm run build
           test -d out
@@ -47,14 +67,46 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
-          aws-region: ${{ vars.AWS_REGION_DEV }}
+          aws-region: ${{ env.AWS_REGION_DEV }}
 
       - name: Sync static files to S3
         run: |
-          aws s3 sync web/out "s3://${{ vars.WEB_BUCKET_DEV }}" --delete
+          aws s3 sync web/out "s3://${WEB_BUCKET_DEV}" --delete
 
       - name: Invalidate CloudFront cache
+        id: invalidate
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV }}" \
-            --paths "/*"
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV}" \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          echo "invalidation_id=$INVALIDATION_ID" >> "$GITHUB_OUTPUT"
+          echo "Started CloudFront invalidation: $INVALIDATION_ID"
+
+      - name: Output deployment links
+        run: |
+          REGION="${AWS_REGION_DEV}"
+          DIST_ID="${WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV}"
+          API_URL="${NEXT_PUBLIC_API_URL_DEV}"
+
+          if [ -n "${WEB_CLOUDFRONT_DOMAIN_DEV:-}" ]; then
+            SITE_URL="https://${WEB_CLOUDFRONT_DOMAIN_DEV}"
+          else
+            SITE_URL="https://${DIST_ID}.cloudfront.net"
+          fi
+
+          DIST_LINK="https://${REGION}.console.aws.amazon.com/cloudfront/v4/home?region=${REGION}#/distributions/${DIST_ID}"
+
+          echo "Web site URL: ${SITE_URL}"
+          echo "API URL: ${API_URL}"
+          echo "CloudFront console: ${DIST_LINK}"
+
+          {
+            echo "## Web Deploy (Dev)"
+            echo "- Site URL: ${SITE_URL}"
+            echo "- API URL: ${API_URL}"
+            echo "- CloudFront Distribution: \`${DIST_ID}\`"
+            echo "- Invalidation ID: \`${{ steps.invalidate.outputs.invalidation_id }}\`"
+            echo "- CloudFront Console: ${DIST_LINK}"
+          } >> "$GITHUB_STEP_SUMMARY"

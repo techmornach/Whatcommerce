@@ -16,6 +16,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION_DEV: ${{ vars.AWS_REGION_DEV }}
+      WORKER_ASG_NAME_DEV: ${{ vars.WORKER_ASG_NAME_DEV }}
     defaults:
       run:
         shell: bash
@@ -24,27 +27,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required GitHub variables
+        run: |
+          missing=0
+          for name in AWS_REGION_DEV WORKER_ASG_NAME_DEV; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository variable: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Set required vars in GitHub repo settings and rerun."
+            exit 1
+          fi
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
-          aws-region: ${{ vars.AWS_REGION_DEV }}
+          aws-region: ${{ env.AWS_REGION_DEV }}
 
       - name: Trigger worker ASG instance refresh
         id: refresh
         run: |
+          ASG_NAME="${WORKER_ASG_NAME_DEV}"
           REFRESH_ID=$(aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name "${{ vars.WORKER_ASG_NAME_DEV }}" \
+            --auto-scaling-group-name "$ASG_NAME" \
             --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}' \
             --query 'InstanceRefreshId' \
             --output text)
           echo "refresh_id=$REFRESH_ID" >> "$GITHUB_OUTPUT"
-          echo "Started instance refresh: $REFRESH_ID"
+          echo "asg_name=$ASG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Started instance refresh: $REFRESH_ID for ASG: $ASG_NAME"
 
       - name: Wait for refresh to complete
         run: |
           REFRESH_ID="${{ steps.refresh.outputs.refresh_id }}"
-          ASG_NAME="${{ vars.WORKER_ASG_NAME_DEV }}"
+          ASG_NAME="${{ steps.refresh.outputs.asg_name }}"
 
           for i in {1..60}; do
             STATUS=$(aws autoscaling describe-instance-refreshes \
@@ -72,3 +91,20 @@ jobs:
 
           echo "Timed out waiting for instance refresh."
           exit 1
+
+      - name: Output worker links
+        run: |
+          ASG_NAME="${{ steps.refresh.outputs.asg_name }}"
+          REFRESH_ID="${{ steps.refresh.outputs.refresh_id }}"
+          REGION="${AWS_REGION_DEV}"
+          ASG_LINK="https://${REGION}.console.aws.amazon.com/ec2autoscaling/home?region=${REGION}#AutoScalingGroupDetails:id=${ASG_NAME};view=details"
+
+          echo "Worker ASG: ${ASG_NAME}"
+          echo "AWS Console: ${ASG_LINK}"
+
+          {
+            echo "## Worker Deploy (Dev)"
+            echo "- Worker ASG: \`${ASG_NAME}\`"
+            echo "- Refresh ID: \`${REFRESH_ID}\`"
+            echo "- ASG Console: ${ASG_LINK}"
+          } >> "$GITHUB_STEP_SUMMARY"
