@@ -34,23 +34,29 @@ from app.utils.whatsapp_text import normalize_whatsapp_markup
 logger = logging.getLogger(__name__)
 
 
-def _split_whatsapp(text: str, max_len: int = 4000) -> list[str]:
+def _split_whatsapp(
+    text: str, max_len: int = 4000, *, public_api_base_url: str | None = None
+) -> list[str]:
     t = (text or "").strip()
     if not t:
         return [EMPTY_REPLY]
     if len(t) <= max_len:
-        return [normalize_whatsapp_markup(t)]
+        return [normalize_whatsapp_markup(t, public_api_base_url=public_api_base_url)]
     chunks: list[str] = []
     rest = t
     while rest:
         if len(rest) <= max_len:
-            chunks.append(normalize_whatsapp_markup(rest))
+            chunks.append(
+                normalize_whatsapp_markup(rest, public_api_base_url=public_api_base_url)
+            )
             break
         cut = rest.rfind("\n\n", 0, max_len)
         if cut < max_len // 2:
             cut = max_len
         chunks.append(
-            normalize_whatsapp_markup(rest[:cut].strip())
+            normalize_whatsapp_markup(
+                rest[:cut].strip(), public_api_base_url=public_api_base_url
+            )
         )
         rest = rest[cut:].strip()
     return [c for c in chunks if c]
@@ -60,19 +66,20 @@ def run_onboarding_agent(
     db: Session, *, wa_chat_id: str, phone_e164: str
 ) -> list[str]:
     settings = get_settings()
+    public_api_base_url = (settings.public_api_base_url or "").strip() or None
     if not (settings.openai_api_key or "").strip():
         return [NO_OPENAI]
 
     session = get_or_create_onboarding_session(db, wa_chat_id, phone_e164)
     if session.state == OnboardingState.complete:
-        return _split_whatsapp(SETUP_COMPLETE)
+        return _split_whatsapp(SETUP_COMPLETE, public_api_base_url=public_api_base_url)
 
     hlimit = max(1, min(settings.conversation_history_max_events, 64))
     history = load_openai_messages(
         db, phone_e164=phone_e164, tenant_id=None, limit=hlimit
     )
     if not history:
-        return _split_whatsapp(NO_HISTORY)
+        return _split_whatsapp(NO_HISTORY, public_api_base_url=public_api_base_url)
 
     ig = evaluate_input_guard(settings, history)
     if ig.blocked:
@@ -89,7 +96,9 @@ def run_onboarding_agent(
                 f"*Classifier JSON (excerpt):*\n{(ig.model_reply_excerpt or '')}"
             ),
         )
-        return _split_whatsapp(INPUT_GUARD_REFUSAL)
+        return _split_whatsapp(
+            INPUT_GUARD_REFUSAL, public_api_base_url=public_api_base_url
+        )
 
     try:
         snap = json.dumps(build_snapshot(db, session), default=str, indent=2)[:12_000]
@@ -123,12 +132,12 @@ def run_onboarding_agent(
         )
         choice = response.choices[0] if response.choices else None
         if not choice:
-            return _split_whatsapp(LLM_NO_CHOICE)
+            return _split_whatsapp(LLM_NO_CHOICE, public_api_base_url=public_api_base_url)
         msg = choice.message
         if not msg.tool_calls:
             content = (msg.content or "").strip()
             if not content:
-                return _split_whatsapp(EMPTY_REPLY)
+                return _split_whatsapp(EMPTY_REPLY, public_api_base_url=public_api_base_url)
             content = postprocess_assistant_reply(
                 content,
                 settings=settings,
@@ -137,7 +146,7 @@ def run_onboarding_agent(
                 phone_e164=phone_e164,
                 flow="onboarding",
             )
-            return _split_whatsapp(content)
+            return _split_whatsapp(content, public_api_base_url=public_api_base_url)
         asst: dict = {"role": "assistant", "content": msg.content}
         tcalls = list(msg.tool_calls)
         asst["tool_calls"] = [
@@ -175,4 +184,4 @@ def run_onboarding_agent(
                 }
             )
         db.refresh(session)
-    return _split_whatsapp(TOOL_ROUND_LIMIT)
+    return _split_whatsapp(TOOL_ROUND_LIMIT, public_api_base_url=public_api_base_url)
