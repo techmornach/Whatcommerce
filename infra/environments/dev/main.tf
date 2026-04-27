@@ -20,6 +20,12 @@ locals {
     : (var.worker_env_file_path != "" && can(file(var.worker_env_file_path)) ? file(var.worker_env_file_path) : "")
   )
   has_worker_env = length(local.worker_env_content) > 0
+
+  has_custom_domains = (
+    trimspace(var.hosted_zone_name) != "" &&
+    trimspace(var.api_domain_name) != "" &&
+    trimspace(var.web_domain_name) != ""
+  )
 }
 
 data "aws_ami" "amazon_linux_2023" {
@@ -33,6 +39,46 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 data "aws_caller_identity" "current" {}
+
+data "aws_route53_zone" "public" {
+  count        = local.has_custom_domains ? 1 : 0
+  name         = var.hosted_zone_name
+  private_zone = false
+}
+
+resource "aws_acm_certificate" "dev" {
+  count             = local.has_custom_domains ? 1 : 0
+  domain_name       = "*.${var.hosted_zone_name}"
+  validation_method = "DNS"
+
+  subject_alternative_names = [var.hosted_zone_name]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-shared-cert"
+  })
+}
+
+resource "aws_route53_record" "cert_validation" {
+  count = local.has_custom_domains ? 1 : 0
+
+  allow_overwrite = true
+  zone_id         = data.aws_route53_zone.public[0].zone_id
+  name            = tolist(aws_acm_certificate.dev[0].domain_validation_options)[0].resource_record_name
+  type            = tolist(aws_acm_certificate.dev[0].domain_validation_options)[0].resource_record_type
+  ttl             = 60
+  records         = [tolist(aws_acm_certificate.dev[0].domain_validation_options)[0].resource_record_value]
+}
+
+resource "aws_acm_certificate_validation" "dev" {
+  count = local.has_custom_domains ? 1 : 0
+
+  certificate_arn         = aws_acm_certificate.dev[0].arn
+  validation_record_fqdns = [aws_route53_record.cert_validation[0].fqdn]
+}
 
 module "api_env_secret" {
   count  = local.has_api_env ? 1 : 0
@@ -171,6 +217,8 @@ module "api_alb" {
   public_subnet_ids = module.vpc.public_subnet_ids
   target_port       = var.api_port
   health_check_path = var.api_health_check_path
+  enable_https      = local.has_custom_domains
+  certificate_arn   = local.has_custom_domains ? aws_acm_certificate_validation.dev[0].certificate_arn : ""
   tags              = local.common_tags
 }
 
@@ -276,8 +324,62 @@ module "uploads_bucket" {
 module "web_static_site" {
   source = "../../modules/s3_static_site"
 
-  bucket_name = "${var.web_bucket_prefix}-${var.environment}-${var.aws_region}-${data.aws_caller_identity.current.account_id}"
-  tags        = local.common_tags
+  bucket_name         = "${var.web_bucket_prefix}-${var.environment}-${var.aws_region}-${data.aws_caller_identity.current.account_id}"
+  aliases             = local.has_custom_domains ? [var.web_domain_name] : []
+  acm_certificate_arn = local.has_custom_domains ? aws_acm_certificate_validation.dev[0].certificate_arn : ""
+  tags                = local.common_tags
+}
+
+resource "aws_route53_record" "api_alias_a" {
+  count   = local.has_custom_domains ? 1 : 0
+  zone_id = data.aws_route53_zone.public[0].zone_id
+  name    = var.api_domain_name
+  type    = "A"
+
+  alias {
+    name                   = module.api_alb.alb_dns_name
+    zone_id                = module.api_alb.alb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "api_alias_aaaa" {
+  count   = local.has_custom_domains ? 1 : 0
+  zone_id = data.aws_route53_zone.public[0].zone_id
+  name    = var.api_domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = module.api_alb.alb_dns_name
+    zone_id                = module.api_alb.alb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "web_alias_a" {
+  count   = local.has_custom_domains ? 1 : 0
+  zone_id = data.aws_route53_zone.public[0].zone_id
+  name    = var.web_domain_name
+  type    = "A"
+
+  alias {
+    name                   = module.web_static_site.cloudfront_domain_name
+    zone_id                = module.web_static_site.cloudfront_hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "web_alias_aaaa" {
+  count   = local.has_custom_domains ? 1 : 0
+  zone_id = data.aws_route53_zone.public[0].zone_id
+  name    = var.web_domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = module.web_static_site.cloudfront_domain_name
+    zone_id                = module.web_static_site.cloudfront_hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 module "iam_ci" {
@@ -322,6 +424,14 @@ output "web_bucket_name" {
 
 output "web_cloudfront_domain_name" {
   value = module.web_static_site.cloudfront_domain_name
+}
+
+output "api_url" {
+  value = local.has_custom_domains ? "https://${var.api_domain_name}" : "http://${module.api_alb.alb_dns_name}"
+}
+
+output "web_url" {
+  value = local.has_custom_domains ? "https://${var.web_domain_name}" : "https://${module.web_static_site.cloudfront_domain_name}"
 }
 
 output "web_cloudfront_distribution_id" {

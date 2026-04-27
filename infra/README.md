@@ -33,6 +33,12 @@ Worker mode (WhatsApp bridge):
 - `worker_repo_url` + `worker_repo_ref`
 - `worker_env_file_path` or `worker_env_content` (stored in Secrets Manager)
 
+Custom domains (optional):
+- `hosted_zone_name` (e.g. `play.jaraflytech.com`)
+- `api_domain_name` (e.g. `api.play.jaraflytech.com`)
+- `web_domain_name` (e.g. `whatcommerce.play.jaraflytech.com`)
+- Terraform provisions ACM + Route53 aliases for API (ALB) and Web (CloudFront)
+
 Clone-friendly setup:
 - copy `infra/environments/dev/secrets.auto.tfvars.example` to `secrets.auto.tfvars`
 - set `api_env_file_path` and `worker_env_file_path` to your local `.env` files
@@ -46,7 +52,7 @@ After apply, set these in your GitHub repository:
 - Variable: `WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV` -> output `web_cloudfront_distribution_id`
 - Variable: `WEB_CLOUDFRONT_DOMAIN_DEV` -> output `web_cloudfront_domain_name` (optional, used to print final site URL in workflow summary)
 - Variable: `WORKER_ASG_NAME_DEV` -> output `worker_asg_name`
-- Variable: `NEXT_PUBLIC_API_URL_DEV` -> dev API base URL
+- Variable: `NEXT_PUBLIC_API_URL_DEV` -> output `api_url` (recommended)
 
 Workflow:
 - `.github/workflows/deploy-dev.yml` deploys both web and worker in one run.

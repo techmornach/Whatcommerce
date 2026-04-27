@@ -8,6 +8,11 @@ output "alb_dns_name" {
   value       = aws_lb.this.dns_name
 }
 
+output "alb_zone_id" {
+  description = "ALB Route53 zone ID"
+  value       = aws_lb.this.zone_id
+}
+
 output "alb_security_group_id" {
   description = "ALB security group ID"
   value       = aws_security_group.alb.id

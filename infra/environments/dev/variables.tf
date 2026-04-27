@@ -149,6 +149,24 @@ variable "github_deploy_branch" {
   default     = "main"
 }
 
+variable "hosted_zone_name" {
+  description = "Route53 hosted zone name used for custom domains (no trailing dot)"
+  type        = string
+  default     = "play.jaraflytech.com"
+}
+
+variable "api_domain_name" {
+  description = "Custom API domain pointing to ALB"
+  type        = string
+  default     = "api.play.jaraflytech.com"
+}
+
+variable "web_domain_name" {
+  description = "Custom web domain pointing to CloudFront"
+  type        = string
+  default     = "whatcommerce.play.jaraflytech.com"
+}
+
 variable "worker_enabled" {
   description = "Whether to provision whatcommerce worker ASG"
   type        = bool

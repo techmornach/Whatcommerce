@@ -25,6 +25,18 @@ variable "health_check_path" {
   default     = "/health"
 }
 
+variable "certificate_arn" {
+  description = "Optional ACM certificate ARN for HTTPS listener"
+  type        = string
+  default     = ""
+}
+
+variable "enable_https" {
+  description = "Whether to enable HTTPS listener and HTTP->HTTPS redirect"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Common tags"
   type        = map(string)

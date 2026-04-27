@@ -52,3 +52,8 @@ uploads_bucket_prefix = "whatcommerce-uploads"
 github_owner         = "techmornach"
 github_repo          = "Whatcommerce"
 github_deploy_branch = "main"
+
+# Custom domains (Route53 hosted zone must exist in this account)
+hosted_zone_name = "play.jaraflytech.com"
+api_domain_name  = "api.play.jaraflytech.com"
+web_domain_name  = "whatcommerce.play.jaraflytech.com"
