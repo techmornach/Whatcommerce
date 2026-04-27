@@ -1,26 +1,32 @@
-from app.models.admin_user import AdminRole, AdminUser
+from app.models.admin_user import AdminUser
 from app.models.billing_plan import BillingPlan
-from app.models.commerce import Order, OrderStatus, Product
-from app.models.customer import Customer
+from app.models.conversation_event import ConversationEvent
+from app.models.enums import OnboardingState, OrderStatus, TenantStatus, UserRole
+from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.models.onboarding_session import OnboardingSession
-from app.models.paystack_event import PaystackProcessedReference
-from app.models.platform import PlatformSettings
-from app.models.whatsapp_outbound import WhatsappOutboundMessage
-from app.models.tenant import PlanTier, Tenant, TenantStatus
+from app.models.order import Order, OrderLine
+from app.models.paystack_processed import PaystackProcessedReference
+from app.models.platform_setting import PlatformSetting
+from app.models.product import Product
+from app.models.tenant import Tenant
+from app.models.user import User
 
 __all__ = [
-    "AdminRole",
     "AdminUser",
     "BillingPlan",
-    "Customer",
+    "ConversationEvent",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
     "OnboardingSession",
+    "OnboardingState",
     "Order",
-    "OrderStatus",
+    "OrderLine",
     "PaystackProcessedReference",
-    "PlanTier",
-    "PlatformSettings",
+    "OrderStatus",
+    "PlatformSetting",
     "Product",
-    "WhatsappOutboundMessage",
     "Tenant",
     "TenantStatus",
+    "User",
+    "UserRole",
 ]

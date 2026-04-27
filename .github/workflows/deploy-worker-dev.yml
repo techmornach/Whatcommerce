@@ -1,0 +1,74 @@
+name: Deploy Worker (Dev)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "whatsapp/**"
+      - ".github/workflows/deploy-worker-dev.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          aws-region: ${{ vars.AWS_REGION_DEV }}
+
+      - name: Trigger worker ASG instance refresh
+        id: refresh
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "${{ vars.WORKER_ASG_NAME_DEV }}" \
+            --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}' \
+            --query 'InstanceRefreshId' \
+            --output text)
+          echo "refresh_id=$REFRESH_ID" >> "$GITHUB_OUTPUT"
+          echo "Started instance refresh: $REFRESH_ID"
+
+      - name: Wait for refresh to complete
+        run: |
+          REFRESH_ID="${{ steps.refresh.outputs.refresh_id }}"
+          ASG_NAME="${{ vars.WORKER_ASG_NAME_DEV }}"
+
+          for i in {1..60}; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --instance-refresh-ids "$REFRESH_ID" \
+              --query 'InstanceRefreshes[0].Status' \
+              --output text)
+
+            echo "Poll $i: $STATUS"
+
+            if [ "$STATUS" = "Successful" ]; then
+              exit 0
+            fi
+
+            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              aws autoscaling describe-instance-refreshes \
+                --auto-scaling-group-name "$ASG_NAME" \
+                --instance-refresh-ids "$REFRESH_ID" \
+                --output json
+              exit 1
+            fi
+
+            sleep 20
+          done
+
+          echo "Timed out waiting for instance refresh."
+          exit 1

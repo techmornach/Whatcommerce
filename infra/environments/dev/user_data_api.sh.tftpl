@@ -1,0 +1,120 @@
+#!/bin/bash
+set -euo pipefail
+
+dnf update -y
+dnf install -y python3 python3-pip git awscli
+
+mkdir -p /opt/whatcommerce
+
+install_stub_app() {
+cat > /opt/whatcommerce/health_app.py <<'PYEOF'
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="whatcommerce-api-bootstrap")
+
+@app.get("/health")
+def health():
+    return JSONResponse({"status": "ok", "service": "api-bootstrap"})
+
+@app.get("/")
+def root():
+    return JSONResponse({"message": "whatcommerce api bootstrap running"})
+PYEOF
+}
+
+python3 -m pip install --upgrade pip
+python3 -m pip install "fastapi>=0.110,<1.0" "uvicorn[standard]>=0.28,<1.0"
+
+BOOTSTRAP_MODE="${bootstrap_mode}"
+API_PORT="${api_port}"
+AWS_REGION="${aws_region}"
+API_ENV_SECRET_ARN="${api_env_secret_arn}"
+APP_DIR="/opt/whatcommerce"
+APP_IMPORT="health_app:app"
+
+if [ "$BOOTSTRAP_MODE" = "real" ]; then
+  REPO_URL="${api_repo_url}"
+  REPO_REF="${api_repo_ref}"
+  APP_SUBDIR="${api_app_subdir}"
+  APP_IMPORT="${api_uvicorn_app}"
+  mkdir -p /opt/whatcommerce
+  rm -rf /opt/whatcommerce/src
+
+  if [ -n "$REPO_URL" ]; then
+    if git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" /opt/whatcommerce/src; then
+      APP_DIR="/opt/whatcommerce/src/$APP_SUBDIR"
+      if [ ! -d "$APP_DIR" ]; then
+        APP_DIR="/opt/whatcommerce/src"
+      fi
+
+      if [ -f "$APP_DIR/pyproject.toml" ]; then
+        python3 -m pip install "$APP_DIR"
+      fi
+
+      if [ -n "$API_ENV_SECRET_ARN" ]; then
+        aws secretsmanager get-secret-value \
+          --secret-id "$API_ENV_SECRET_ARN" \
+          --region "$AWS_REGION" \
+          --query SecretString \
+          --output text > "$APP_DIR/.env"
+      fi
+    else
+      BOOTSTRAP_MODE="stub"
+    fi
+  else
+    BOOTSTRAP_MODE="stub"
+  fi
+fi
+
+if [ "$BOOTSTRAP_MODE" = "stub" ]; then
+  install_stub_app
+  APP_DIR="/opt/whatcommerce"
+  APP_IMPORT="health_app:app"
+fi
+
+cat > /etc/systemd/system/whatcommerce-api.service <<UNITEOF
+[Unit]
+Description=Whatcommerce API bootstrap service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$${APP_DIR}
+ExecStart=/usr/local/bin/uvicorn $${APP_IMPORT} --host 0.0.0.0 --port $${API_PORT}
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+
+systemctl daemon-reload
+systemctl enable whatcommerce-api.service
+systemctl restart whatcommerce-api.service
+
+sleep 10
+if ! systemctl is-active --quiet whatcommerce-api.service; then
+  install_stub_app
+  cat > /etc/systemd/system/whatcommerce-api.service <<UNITEOF
+[Unit]
+Description=Whatcommerce API fallback health service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/whatcommerce
+ExecStart=/usr/local/bin/uvicorn health_app:app --host 0.0.0.0 --port $${API_PORT}
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+  systemctl daemon-reload
+  systemctl restart whatcommerce-api.service
+fi

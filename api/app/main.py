@@ -1,75 +1,73 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     admin_auth,
-    admin_platform,
-    admin_portal,
+    admin_knowledge,
+    admin_ops,
+    admin_plans,
+    admin_settings,
+    admin_tenants,
     health,
     internal,
-    payments_internal,
     paystack_webhook,
     public,
-    store_manager_internal,
-    tenants_internal,
-    whatcommerce_internal,
 )
 from app.core.config import get_settings
-from app.db.session import AsyncSessionLocal
-from app.lifecycle import ensure_default_billing_plans, ensure_default_platform_settings
-from app.services.admin_bootstrap import ensure_bootstrap_admin
+from app.services.bootstrap import run_startup_bootstrap
+from app.services.product_image_storage import URL_PREFIX, upload_root
 
-# Loopback hostnames + any port (Next dev on 3001, IPv6 ::1, etc.)
-_LOCAL_NEXT_CORS_REGEX = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
-
-
-def _cors_allow_origins() -> list[str]:
-    base = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://[::1]:3000",
-    ]
-    extra = [o.strip() for o in get_settings().cors_allow_origins.split(",") if o.strip()]
-    seen: set[str] = set()
-    out: list[str] = []
-    for o in base + extra:
-        if o not in seen:
-            seen.add(o)
-            out.append(o)
-    return out
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with AsyncSessionLocal() as session:
-        await ensure_default_platform_settings(session)
-    async with AsyncSessionLocal() as session:
-        await ensure_default_billing_plans(session)
-    async with AsyncSessionLocal() as session:
-        await ensure_bootstrap_admin(session)
+async def lifespan(_: FastAPI):
+    s = get_settings()
+    try:
+        upload_root(s).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logging.getLogger(__name__).warning("product upload dir: %s", e)
+    run_startup_bootstrap()
     yield
 
 
-app = FastAPI(title="Whatcommerce API", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_allow_origins(),
-    allow_origin_regex=_LOCAL_NEXT_CORS_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def create_app() -> FastAPI:
+    settings = get_settings()
+    is_prod = settings.api_env.strip().lower() in {"prod", "production"}
+    app = FastAPI(
+        title="Whatcommerce API",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(health.router)
+    app.include_router(public.router)
+    app.include_router(admin_auth.router)
+    app.include_router(admin_tenants.router)
+    app.include_router(admin_plans.router)
+    app.include_router(admin_settings.router)
+    app.include_router(admin_knowledge.router)
+    app.include_router(admin_ops.router)
+    app.include_router(internal.router)
+    app.include_router(paystack_webhook.router)
+    # Local product images: /files/products/{tenant_id}/{file}
+    root = upload_root(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    app.mount(URL_PREFIX, StaticFiles(directory=str(root)), name="product_uploads")
+    return app
 
-app.include_router(health.router)
-app.include_router(admin_auth.router)
-app.include_router(admin_portal.router)
-app.include_router(public.router)
-app.include_router(paystack_webhook.router)
-app.include_router(internal.router)
-app.include_router(admin_platform.router)
-app.include_router(tenants_internal.router)
-app.include_router(payments_internal.router)
-app.include_router(store_manager_internal.router)
-app.include_router(whatcommerce_internal.router)
+
+app = create_app()

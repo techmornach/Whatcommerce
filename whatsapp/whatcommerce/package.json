@@ -1,0 +1,14 @@
+{
+  "name": "whatcommerce-whatsapp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp Web (whatsapp-web.js) bridge; forwards to FastAPI /api/internal",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  }
+}

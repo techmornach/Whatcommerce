@@ -1,80 +1,89 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { adminLogin, getAdminToken } from "@/lib/admin-api";
+import { adminLogin, AUTH_TOKEN_KEY } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (getAdminToken()) {
-      router.replace("/admin/whatcommerce");
-    }
-  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setErr(null);
     setLoading(true);
     try {
-      await adminLogin(email, password);
-      router.replace("/admin/whatcommerce");
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const t = await adminLogin(email, password);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(AUTH_TOKEN_KEY, t.access_token);
+      }
+      router.push("/admin");
+    } catch (c) {
+      setErr(c instanceof Error ? c.message : "Login failed");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-4 text-zinc-100">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8 shadow-xl">
-        <h1 className="text-xl font-semibold tracking-tight">Whatcommerce admin</h1>
-        <p className="mt-1 text-sm text-zinc-500">Signs in against FastAPI — not store-manager tenants.</p>
-        <form className="mt-8 space-y-4" onSubmit={onSubmit}>
-          <div>
-            <label className="text-xs font-medium text-zinc-400" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="username"
-              required
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-zinc-600/40 focus:ring-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-zinc-400" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-zinc-600/40 focus:ring-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-zinc-100 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white disabled:opacity-50"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+    <div className="wc-shell flex items-center justify-center p-6">
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2">
+        <div className="hidden bg-gradient-to-br from-teal-700 via-teal-600 to-cyan-600 p-8 text-white md:block">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/80">
+            Whatcommerce Admin
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold leading-tight">
+            Monitor your WhatsApp commerce operations in one place.
+          </h1>
+          <p className="mt-4 text-sm text-white/85">
+            Manage plans, knowledge base, tenant activity, and WhatsApp bridge status from
+            a single control center.
+          </p>
+        </div>
+
+        <div className="p-7 md:p-9">
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Admin access</h1>
+          <p className="mb-6 text-sm text-slate-600 dark:text-slate-400">
+            Sign in to manage your store operations.
+          </p>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="wc-input"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="wc-input"
+                required
+              />
+            </div>
+            {err && <p className="text-sm text-red-500">{err}</p>}
+            <button type="submit" disabled={loading} className="wc-btn-primary w-full disabled:opacity-50">
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+          <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
+            <Link href="/" className="hover:text-slate-700 dark:hover:text-slate-200">
+              Back to home
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,25 +1,20 @@
-"""Billing plans editable from the admin dashboard."""
-
-from sqlalchemy import Boolean, DateTime, Integer, String, func
-from sqlalchemy.orm import mapped_column
+from sqlalchemy import Boolean, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.mixins import TimestampMixin
 
 
-class BillingPlan(Base):
+class BillingPlan(TimestampMixin, Base):
     __tablename__ = "billing_plans"
 
-    # Stable key used across tenant rows (e.g. "lite", "standard", "premium")
-    tier = mapped_column(String(32), primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    max_products: Mapped[int] = mapped_column(Integer)
+    price_monthly_ngn: Mapped[int] = mapped_column(Integer)
+    price_yearly_ngn: Mapped[int] = mapped_column(Integer)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    monthly_amount_ngn = mapped_column(Integer(), nullable=False)
-    yearly_amount_ngn = mapped_column(Integer(), nullable=True)
-
-    max_products = mapped_column(Integer(), nullable=False)
-    max_users = mapped_column(Integer(), nullable=False)
-
-    is_active = mapped_column(Boolean(), nullable=False, server_default="true")
-
-    created_at = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
+    tenants = relationship("Tenant", back_populates="plan")

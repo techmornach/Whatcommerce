@@ -1,31 +1,56 @@
-"""Public admin login (JWT for /v1/admin/*)."""
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from app.core.security import create_admin_access_token, verify_password
+from app.api.deps import get_current_admin
+from app.core.config import get_settings
+from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
-from app.models.admin_user import AdminUser
+from app.models import AdminUser
 
-router = APIRouter(prefix="/v1/auth/admin", tags=["admin-auth"])
-
-
-class AdminLoginBody(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=256)
+router = APIRouter(prefix="/api/admin/auth", tags=["admin"])
 
 
-@router.post("/login")
-async def admin_login(body: AdminLoginBody, db: AsyncSession = Depends(get_db)) -> dict:
-    email = body.email.strip().lower()
-    result = await db.execute(select(AdminUser).where(AdminUser.email == email))
-    user = result.scalar_one_or_none()
-    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+class LoginIn(BaseModel):
+    email: str = Field(min_length=3, max_length=512)
+    password: str = Field(min_length=6, max_length=256)
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class AdminMeOut(BaseModel):
+    id: int
+    email: str
+
+
+@router.post("/login", response_model=TokenOut)
+def admin_login(data: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
+    email = data.email.strip().lower()
+    user = db.execute(select(AdminUser).where(AdminUser.email == email)).scalars().first()
+    if user is None or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    token = create_admin_access_token(admin_id=user.id, email=user.email, role=user.role)
-    return {"access_token": token, "token_type": "bearer"}
+    settings = get_settings()
+    exp = timedelta(minutes=settings.access_token_expire_minutes)
+    token = create_access_token(
+        data={"sub": str(user.id), "type": "admin"},
+        expires_delta=exp,
+    )
+    return TokenOut(
+        access_token=token,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
+@router.get("/me", response_model=AdminMeOut)
+def admin_me(admin: AdminUser = Depends(get_current_admin)) -> AdminMeOut:
+    return AdminMeOut(id=admin.id, email=admin.email)

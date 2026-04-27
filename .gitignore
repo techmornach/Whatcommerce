@@ -1,21 +1,45 @@
+# OS
+.DS_Store
+
+# Env
 .env
 .env.local
 .env.*.local
-node_modules/
-.next/
-dist/
-build/
+!.env.example
+
+# Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
+.venv/
 .mypy_cache/
 .ruff_cache/
-venv/
-.venv/
+.pytest_cache/
+dist/
+build/
 *.egg-info/
+
+# API uploads (local product images; production may use S3)
+api/data/product_uploads/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# WhatsApp
 .wwebjs_auth/
 .wwebjs_cache/
-whatsapp/whatcommerce/.wwebjs_auth/
-whatsapp/whatcommerce/.wwebjs_cache/
-whatsapp/store-manager/.wwebjs_auth/
-whatsapp/store-manager/.wwebjs_cache/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Terraform local state/secrets
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/environments/*/secrets.auto.tfvars

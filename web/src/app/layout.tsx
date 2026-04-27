@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Whatcommerce",
-  description: "WhatsApp-first commerce for small vendors in Nigeria.",
+  title: "Whatcommerce | WhatsApp Commerce OS",
+  description:
+    "Sell, manage orders, and run your business from WhatsApp with AI-assisted workflows.",
 };
 
 export default function RootLayout({

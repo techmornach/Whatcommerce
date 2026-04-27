@@ -1,18 +1,36 @@
-from sqlalchemy import DateTime, ForeignKey, String, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
-from sqlalchemy.orm import mapped_column
+from typing import Any
+
+from sqlalchemy import Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.models.enums import OnboardingState
+from app.models.mixins import TimestampMixin
 
 
-class OnboardingSession(Base):
-    """Deterministic signup flow for the Whatcommerce WhatsApp bot (per phone)."""
+class OnboardingSession(TimestampMixin, Base):
+    """
+    One row per WhatsApp chat while the vendor is in the onboarding FSM.
+    Survives process restarts; not used once the tenant is active.
+    """
 
     __tablename__ = "onboarding_sessions"
+    __table_args__ = (UniqueConstraint("wa_chat_id", name="uq_onboarding_sessions_wa_chat_id"),)
 
-    phone_e164 = mapped_column(String(32), primary_key=True)
-    state = mapped_column(String(64), nullable=False)
-    data = mapped_column(JSONB, nullable=False)
-    tenant_id = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True)
-    created_at = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wa_chat_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    phone_e164: Mapped[str] = mapped_column(String(24), index=True, nullable=False)
+    state: Mapped[OnboardingState] = mapped_column(
+        Enum(OnboardingState, name="onboarding_state", create_constraint=True, native_enum=False),
+        default=OnboardingState.ask_name,
+        index=True,
+    )
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    tenant_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True
+    )

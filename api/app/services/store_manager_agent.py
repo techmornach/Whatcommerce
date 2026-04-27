@@ -1,291 +1,413 @@
-"""OpenAI Agents SDK + product/order tools for the store-manager WhatsApp worker."""
+"""
+OpenAI function-calling loop for the WhatsApp store manager (active tenants only).
+"""
 
-from __future__ import annotations
-
+import json
 import logging
-import os
-from dataclasses import dataclass
-from uuid import UUID
+import uuid
 
-from agents import Agent, Runner, RunContextWrapper, function_tool
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from openai import OpenAI
+from sqlalchemy.orm import Session
 
-from app.billing.plans import max_products_for_tier
 from app.core.config import get_settings
-from app.models.commerce import Order, OrderStatus, Product
-from app.models.customer import Customer
-from app.models.tenant import Tenant
-from app.services.outbound_queue import enqueue_owner_pending_order_notification
-from app.utils.phone import normalize_phone_e164
+from app.messages.whatsapp_guardrails import INPUT_GUARD_REFUSAL
+from app.services.agent_input_guard import (
+    evaluate_input_guard,
+    format_transcript_for_guard,
+)
+from app.services.agent_response_pipeline import postprocess_assistant_reply
+from app.services.conversation_store import load_openai_messages
+from app.services.guard_reporting import report_guard_block
+from app.services.store_context import StoreContext
+from app.services.store_intent_router import build_store_analyst_system, classify_store_intent
+from app.services.store_tools import execute_store_tool
+from app.utils.whatsapp_text import normalize_whatsapp_markup
 
 logger = logging.getLogger(__name__)
 
+STORE_SYSTEM = """You are Whatcommerce, an AI store manager on WhatsApp for small businesses
+in Nigeria.
 
-@dataclass
-class StoreManagerContext:
-    db: AsyncSession
-    tenant_id: UUID
-    sender_phone_e164: str
+You help the shop owner manage *products* and *orders*. Be concise, friendly, and clear.
+Use *bold* for key terms where it helps. Currency is Nigerian Naira (₦). For *links*, use
+plain *https://…* text only—do not use `[label](url)` Markdown; WhatsApp does not render it.
+Never invent stock levels or product IDs—always use the tools to read or change the database.
+If a tool returns an error, explain it and suggest a fix.
 
+Common intents: list or add products, create an order from product IDs, check recent orders,
+store summary. If the user only greets you, reply briefly and offer 2–3 things you can do.
 
-def _chunk_reply(text: str, limit: int = 3500) -> list[str]:
-    text = (text or "").strip()
-    if not text:
-        return ["(empty response)"]
-    if len(text) <= limit:
-        return [text]
-    return [text[i : i + limit] for i in range(0, len(text), limit)]
+When the owner sends a *product photo*, the message may include a *Catalog image URL* (hosted on
+this server). Pass that exact URL in *add_product* or *update_product* as *image_urls* so the
+product keeps the image. You can call *describe_product_image* on that URL (or a *product_id*
+that already has images) to generate a *description* before saving.
 
-
-def _is_shop_owner(tenant: Tenant | None, sender: str) -> bool:
-    if tenant is None:
-        return False
-    return normalize_phone_e164(tenant.onboarding_phone_e164) == normalize_phone_e164(sender)
-
-
-@function_tool
-async def list_products(ctx: RunContextWrapper[StoreManagerContext]) -> str:
-    """List up to 40 products for this store (name, price in NGN, id)."""
-    c = ctx.context
-    r = await c.db.execute(
-        select(Product)
-        .where(Product.tenant_id == c.tenant_id)
-        .order_by(Product.created_at.desc())
-        .limit(40)
-    )
-    rows = r.scalars().all()
-    if not rows:
-        return "No products yet."
-    lines = [f"{p.name} — ₦{p.price_minor:,} (id {p.id})" for p in rows]
-    return "\n".join(lines)
+For *general* Whatcommerce *policies, billing basics, and FAQs*, call *search_platform_knowledge*
+(Admin-maintained). Never use it to invent *this store* product stock or order details—
+those come only from the other tools."""
 
 
-@function_tool
-async def add_product(
-    ctx: RunContextWrapper[StoreManagerContext],
-    name: str,
-    price_ngn: int,
-    description: str = "",
-) -> str:
-    """Add a product. price_ngn is whole naira (e.g. 2500). Respects plan product limits."""
-    c = ctx.context
-    tenant = await c.db.get(Tenant, c.tenant_id)
-    if not tenant:
-        return "Tenant not found."
-    cap = await max_products_for_tier(c.db, tenant.plan_tier)
-    cnt = await c.db.scalar(select(func.count()).select_from(Product).where(Product.tenant_id == c.tenant_id))
-    if int(cnt or 0) >= cap:
-        return f"Product limit reached ({cap} for current plan)."
-    nm = (name or "").strip()
-    if len(nm) < 1:
-        return "Product name required."
-    if price_ngn < 0:
-        return "Invalid price."
-    desc = (description or "").strip()
-    p = Product(
-        tenant_id=c.tenant_id,
-        name=nm[:255],
-        description=desc[:4000] if desc else None,
-        price_minor=int(price_ngn),
-        currency="NGN",
-    )
-    c.db.add(p)
-    await c.db.flush()
-    return f"Added product {p.name} at ₦{p.price_minor:,} (id {p.id})."
-
-
-@function_tool
-async def list_orders(ctx: RunContextWrapper[StoreManagerContext]) -> str:
-    """List recent orders (status, customer, id)."""
-    c = ctx.context
-    r = await c.db.execute(
-        select(Order)
-        .where(Order.tenant_id == c.tenant_id)
-        .order_by(Order.created_at.desc())
-        .limit(25)
-    )
-    rows = r.scalars().all()
-    if not rows:
-        return "No orders yet."
-    lines = [
-        f"{o.id} | {o.status} | {o.customer_name} | {o.customer_phone_e164}" for o in rows
+def _openai_tool_definitions() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_store_summary",
+                "description": (
+                    "Get business name, plan limits, product and order counts, subscription end."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_products",
+                "description": (
+                    "List products: id, name, selling price (price_ngn), optional cost_price_ngn, "
+                    "stock, description snippet, image_urls."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "include_inactive": {
+                            "type": "boolean",
+                            "description": "Include inactive/archived products",
+                        }
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_product",
+                "description": (
+                    "Add a new product. price_ngn is the *selling* price. Respects plan limit."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Product name"},
+                        "price_ngn": {
+                            "type": "integer",
+                            "description": "Selling price in NGN (integer)",
+                        },
+                        "cost_price_ngn": {
+                            "type": "integer",
+                            "description": "Optional cost of goods in NGN",
+                        },
+                        "stock": {
+                            "type": "integer",
+                            "description": "Units in stock (default 0)",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional product description",
+                        },
+                        "image_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Optional URLs: https or /files/products/… from a catalog photo "
+                                "in chat"
+                            ),
+                        },
+                    },
+                    "required": ["name", "price_ngn"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_product",
+                "description": "Update an existing product by id (same tenant only).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "product_id": {"type": "integer"},
+                        "name": {"type": "string"},
+                        "price_ngn": {
+                            "type": "integer",
+                            "description": "Selling price in NGN",
+                        },
+                        "cost_price_ngn": {
+                            "type": "integer",
+                            "description": "Optional; omit field to leave unchanged, null to clear",
+                        },
+                        "stock": {"type": "integer"},
+                        "description": {"type": "string"},
+                        "image_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "is_active": {
+                            "type": "boolean",
+                            "description": "False to hide from default listings",
+                        },
+                    },
+                    "required": ["product_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_product",
+                "description": "Permanently delete a product by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"product_id": {"type": "integer"}},
+                    "required": ["product_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_orders",
+                "description": "List recent orders with lines and totals.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max orders (1–50, default 10)",
+                        }
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_order",
+                "description": "Create order; deducts stock. Each line: product_id and quantity.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "lines": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "product_id": {"type": "integer"},
+                                    "quantity": {"type": "integer", "minimum": 1},
+                                },
+                                "required": ["product_id", "quantity"],
+                            },
+                        },
+                        "customer_name": {
+                            "type": "string",
+                            "description": "Optional end-customer name",
+                        },
+                        "customer_phone": {
+                            "type": "string",
+                            "description": "Optional end-customer phone",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "Optional order notes",
+                        },
+                    },
+                    "required": ["lines"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "describe_product_image",
+                "description": (
+                    "Short catalog *description* from a stored product image (vision). "
+                    "Use image_url from chat, or product_id (first product image)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_url": {
+                            "type": "string",
+                            "description": "/files/products/... URL or full URL for this store",
+                        },
+                        "product_id": {
+                            "type": "integer",
+                            "description": "Optional; first product image_urls entry",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_platform_knowledge",
+                "description": (
+                    "Search the platform knowledge base (FAQs, policies, how Whatcommerce works). "
+                    "Use for generic questions, not for this shop's product stock or order rows."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to look up (natural language or keywords)",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
     ]
-    return "\n".join(lines)
 
 
-@function_tool
-async def list_pending_orders(ctx: RunContextWrapper[StoreManagerContext]) -> str:
-    """List orders waiting for merchant confirmation."""
-    c = ctx.context
-    r = await c.db.execute(
-        select(Order)
-        .where(
-            Order.tenant_id == c.tenant_id,
-            Order.status == OrderStatus.pending_confirmation.value,
+def _split_whatsapp(text: str, max_len: int = 4000) -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return ["…"]
+    if len(t) <= max_len:
+        return [normalize_whatsapp_markup(t)]
+    chunks: list[str] = []
+    rest = t
+    while rest:
+        if len(rest) <= max_len:
+            chunks.append(normalize_whatsapp_markup(rest))
+            break
+        cut = rest.rfind("\n\n", 0, max_len)
+        if cut < max_len // 2:
+            cut = max_len
+        chunks.append(
+            normalize_whatsapp_markup(rest[:cut].strip())
         )
-        .order_by(Order.created_at.asc())
-        .limit(30)
-    )
-    rows = r.scalars().all()
-    if not rows:
-        return "No pending orders."
-    lines = []
-    for o in rows:
-        extra = (o.order_summary or "").replace("\n", " ")[:120]
-        lines.append(f"{o.id} | {o.customer_name} | {o.customer_phone_e164} | {extra}")
-    return "\n".join(lines)
+        rest = rest[cut:].strip()
+    return [c for c in chunks if c]
 
 
-@function_tool
-async def submit_customer_order(
-    ctx: RunContextWrapper[StoreManagerContext],
-    customer_name: str,
-    customer_phone: str,
-    shipping_address: str,
-    items_summary: str = "",
-) -> str:
-    """Create an order in pending_confirmation. customer_phone should be digits (E.164 without +)."""
-    c = ctx.context
-    phone = normalize_phone_e164(customer_phone)
-    if len(phone) < 10:
-        return "Invalid customer_phone."
-    nm = (customer_name or "").strip()
-    if len(nm) < 2:
-        return "Customer name required."
-    addr = (shipping_address or "").strip()
-    if len(addr) < 5:
-        return "Shipping address required."
-    summ = (items_summary or "").strip()
-    tenant = await c.db.get(Tenant, c.tenant_id)
-    if tenant and phone == normalize_phone_e164(tenant.onboarding_phone_e164):
-        return "Use a customer phone that is not the shop owner's onboarding number."
-    o = Order(
-        tenant_id=c.tenant_id,
-        customer_phone_e164=phone,
-        customer_name=nm[:255],
-        shipping_address=addr[:8000],
-        order_summary=summ[:8000] if summ else None,
-        status=OrderStatus.pending_confirmation.value,
-    )
-    c.db.add(o)
-    await c.db.flush()
-    if tenant:
-        await enqueue_owner_pending_order_notification(c.db, tenant=tenant, order=o)
-    return f"Order {o.id} created — pending merchant confirmation. Ask the owner to confirm in chat."
-
-
-@function_tool
-async def confirm_order(ctx: RunContextWrapper[StoreManagerContext], order_id: str) -> str:
-    """Confirm a pending order (shop owner only — same phone as platform onboarding)."""
-    c = ctx.context
-    tenant = await c.db.get(Tenant, c.tenant_id)
-    if not _is_shop_owner(tenant, c.sender_phone_e164):
-        return "Only the shop owner (onboarding WhatsApp number) can confirm orders."
-    try:
-        oid = UUID(order_id.strip())
-    except ValueError:
-        return "Invalid order_id (must be UUID)."
-    o = await c.db.get(Order, oid)
-    if o is None or o.tenant_id != c.tenant_id:
-        return "Order not found."
-    if o.status != OrderStatus.pending_confirmation.value:
-        return f"Order is not pending (status={o.status})."
-    o.status = OrderStatus.confirmed.value
-    o.rejection_reason = None
-    existing = await c.db.execute(
-        select(Customer).where(
-            Customer.tenant_id == c.tenant_id,
-            Customer.phone_e164 == o.customer_phone_e164,
-        )
-    )
-    if existing.scalars().first() is None:
-        c.db.add(
-            Customer(
-                tenant_id=c.tenant_id,
-                phone_e164=o.customer_phone_e164,
-                display_name=o.customer_name,
-            )
-        )
-    await c.db.flush()
-    return f"Order {o.id} confirmed."
-
-
-@function_tool
-async def reject_order(ctx: RunContextWrapper[StoreManagerContext], order_id: str, reason: str = "") -> str:
-    """Reject a pending order (shop owner only)."""
-    c = ctx.context
-    tenant = await c.db.get(Tenant, c.tenant_id)
-    if not _is_shop_owner(tenant, c.sender_phone_e164):
-        return "Only the shop owner can reject orders."
-    try:
-        oid = UUID(order_id.strip())
-    except ValueError:
-        return "Invalid order_id."
-    o = await c.db.get(Order, oid)
-    if o is None or o.tenant_id != c.tenant_id:
-        return "Order not found."
-    if o.status != OrderStatus.pending_confirmation.value:
-        return f"Order is not pending (status={o.status})."
-    o.status = OrderStatus.rejected.value
-    o.rejection_reason = (reason or "").strip()[:4000] or None
-    await c.db.flush()
-    return f"Order {o.id} rejected."
-
-
-_STORE_INSTRUCTIONS = """You are the WhatsApp store assistant for ONE shop (the tenant).
-You can list/add products, list orders, and handle customer orders.
-Prices are in Nigerian Naira (whole naira for add_product).
-
-Orders:
-- Use submit_customer_order when a shopper gives name, phone, address, and what they want.
-- Pending orders must be confirmed or rejected by the shop owner (the same phone they used for Whatcommerce onboarding). Use list_pending_orders, confirm_order, reject_order for the owner.
-- Be brief. Do not invent Paystack or payment confirmations.
-"""
-
-
-async def run_store_manager_agent(
-    *,
-    db: AsyncSession,
-    tenant_id: UUID,
-    sender_phone_e164: str,
-    user_message: str,
-) -> list[str]:
+def run_store_manager(db: Session, ctx: StoreContext) -> list[str]:
     settings = get_settings()
-    if not settings.openai_api_key:
-        return ["AI is not configured on the server (OPENAI_API_KEY)."]
-    os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+    if not (settings.openai_api_key or "").strip():
+        return [
+            "The *store manager* is not available: set *OPENAI_API_KEY* on the API server. "
+            "Your subscription is still active."
+        ]
 
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
-        return ["Store not found."]
-
-    tools = [
-        list_products,
-        add_product,
-        list_orders,
-        list_pending_orders,
-        submit_customer_order,
-        confirm_order,
-        reject_order,
-    ]
-
-    agent = Agent[StoreManagerContext](
-        name="store_manager",
-        instructions=_STORE_INSTRUCTIONS + f"\nStore name: {tenant.business_name}\n",
-        tools=tools,
-        model=settings.openai_model,
+    hlimit = max(1, min(settings.conversation_history_max_events, 64))
+    history = load_openai_messages(
+        db, phone_e164=ctx.phone_e164, tenant_id=ctx.tenant_id, limit=hlimit
     )
-    ctx = StoreManagerContext(
-        db=db,
-        tenant_id=tenant_id,
-        sender_phone_e164=normalize_phone_e164(sender_phone_e164),
+    if not history:
+        return _split_whatsapp("Sorry, the conversation was empty. Please send a message again.")
+
+    ig = evaluate_input_guard(settings, history)
+    if ig.blocked:
+        max_ch = max(500, int(getattr(settings, "agent_input_guard_max_context_chars", 4000)))
+        report_guard_block(
+            db,
+            kind="input",
+            flow="store",
+            phone_e164=ctx.phone_e164,
+            latest_user_message=(history[-1].get("content") or "") if history else "",
+            context_excerpt=format_transcript_for_guard(history, max_chars=min(max_ch, 3000)),
+            category=ig.category,
+            blocked_content_summary=(
+                f"*Classifier JSON (excerpt):*\n{(ig.model_reply_excerpt or '')}"
+            ),
+        )
+        return _split_whatsapp(INPUT_GUARD_REFUSAL)
+
+    trace_id = uuid.uuid4().hex[:16]
+    trace_user = f"wc-t{ctx.tenant_id}-{trace_id}"
+    last_msg = (history[-1].get("content") or "").strip() if history else ""
+    route = classify_store_intent(
+        settings, last_user_message=last_msg, trace_user=trace_user
     )
-    try:
-        result = await Runner.run(agent, input=user_message.strip(), context=ctx, max_turns=16)
-    except Exception:
-        logger.exception("store manager agent failed")
-        return ["Sorry, something went wrong. Try again shortly."]
-    out = result.final_output
-    text = out if isinstance(out, str) else str(out)
-    return _chunk_reply(text)
+    if route == "analyst":
+        system = build_store_analyst_system(settings, ctx)
+        model = (settings.openai_store_analyst_model or "").strip() or settings.openai_model
+    else:
+        system = (
+            f"{STORE_SYSTEM}\n\n"
+            f"You are working with *{ctx.business_name}* ({ctx.plan_name} plan, "
+            f"max {ctx.max_products} products). The owner is *{ctx.user_display_name}*. "
+            f"Address their latest message; keep prior turns in mind for context only."
+        )
+        model = settings.openai_model
+
+    logger.info(
+        "store_manager: tenant_id=%s intent=%s model=%s wc_trace_id=%s",
+        ctx.tenant_id,
+        route,
+        model,
+        trace_id,
+    )
+
+    client = OpenAI(api_key=settings.openai_api_key)
+    max_rounds = max(1, min(settings.store_manager_max_tool_rounds, 12))
+    tools = _openai_tool_definitions()
+
+    messages: list[dict] = [{"role": "system", "content": system}, *history]
+
+    for _ in range(max_rounds):
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            user=trace_user,
+        )
+        choice = response.choices[0] if response.choices else None
+        if not choice:
+            return _split_whatsapp("I couldn’t generate a reply. Please try again.")
+        msg = choice.message
+
+        if not msg.tool_calls:
+            content = (msg.content or "").strip()
+            if not content:
+                return _split_whatsapp("Done.")
+            content = postprocess_assistant_reply(
+                content,
+                settings=settings,
+                db=db,
+                history=history,
+                phone_e164=ctx.phone_e164,
+                flow="store",
+            )
+            return _split_whatsapp(content)
+
+        asst: dict = {"role": "assistant", "content": msg.content}
+        tcalls = list(msg.tool_calls)
+        asst["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments or "{}",
+                },
+            }
+            for tc in tcalls
+        ]
+        messages.append(asst)
+
+        for tc in tcalls:
+            name = tc.function.name
+            raw_args = tc.function.arguments or "{}"
+            try:
+                result_str = execute_store_tool(db, ctx, name, raw_args)
+            except Exception as e:
+                logger.exception("store tool %s: %s", name, e)
+                result_str = json.dumps(
+                    {"ok": False, "error": f"server_error: {e!s}"}
+                )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result_str,
+                }
+            )
+
+    return _split_whatsapp(
+        "I hit the tool step limit. Ask something simpler, or try again in a moment."
+    )

@@ -1,0 +1,12 @@
+2026/04/27-09:25:54.030 4ce94 Reusing MANIFEST /Users/taiwoifedayo/Projects/Whatcommerce_new/whatsapp/whatcommerce/.wwebjs/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/04/27-09:25:54.031 4ce94 Recovering log #10
+2026/04/27-09:25:54.051 4ce94 Reusing old log /Users/taiwoifedayo/Projects/Whatcommerce_new/whatsapp/whatcommerce/.wwebjs/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/000010.log 
+2026/04/27-09:27:37.378 4ce96 Level-0 table #15: started
+2026/04/27-09:27:37.400 4ce96 Level-0 table #15: 1261407 bytes OK
+2026/04/27-09:27:37.402 4ce96 Delete type=0 #10
+2026/04/27-09:27:47.382 4ce96 Compacting 1@1 + 1@2 files
+2026/04/27-09:27:47.409 4ce96 Generated table #16@1: 47905 keys, 1847843 bytes
+2026/04/27-09:27:47.409 4ce96 Compacted 1@1 + 1@2 files => 1847843 bytes
+2026/04/27-09:27:47.411 4ce96 compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/04/27-09:27:47.411 4ce96 Delete type=2 #15
+2026/04/27-09:27:47.411 4ce96 Delete type=2 #12

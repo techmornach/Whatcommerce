@@ -1,48 +1,106 @@
-from typing import Any, Literal, Optional
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from app.api.deps import require_internal_secret
+from app.api.deps import require_internal_key
 from app.db.session import get_db
-from app.services.onboarding_fsm import handle_whatcommerce_inbound
-from app.services.store_manager_inbound import handle_store_manager_inbound
-from app.services.serper import serper_search
+from app.services.bridge_status import apply_bridge_report
+from app.services.inbound_router import process_inbound_whatsapp
 
-router = APIRouter(prefix="/v1/internal", tags=["internal"], dependencies=[Depends(require_internal_secret)])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/api/internal",
+    tags=["internal"],
+    dependencies=[Depends(require_internal_key)],
+)
 
 
-class SerperSearchBody(BaseModel):
-    q: str = Field(min_length=1, max_length=500)
-    num: int = Field(default=8, ge=1, le=20)
+class InboundMessageIn(BaseModel):
+    from_wa_id: str = Field(
+        min_length=5, max_length=128, description="Chat id, e.g. 234...@c.us"
+    )
+    body: str = Field(min_length=0, max_length=32_000)
+    message_id: str | None = None
+    message_type: str | None = Field(default=None, max_length=64)
+    media_mimetype: str | None = Field(default=None, max_length=256)
+    media_base64: str | None = Field(default=None, max_length=10_485_760)
 
 
-@router.post("/serper/search")
-async def internal_serper_search(body: SerperSearchBody) -> dict[str, Any]:
+class InboundMessageOut(BaseModel):
+    replies: list[str]
+
+
+@router.post("/inbound-messages", response_model=InboundMessageOut)
+def inbound_message(
+    payload: InboundMessageIn,
+    db: Session = Depends(get_db),
+) -> InboundMessageOut:
+    """
+    Inbound messages from the WhatsApp bridge (text and optional media). Returns bot
+    replies; the bridge should send them to the chat in order.
+    """
     try:
-        return await serper_search(body.q, num=body.num)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-
-
-class WhatsAppInboundBody(BaseModel):
-    channel: Literal["whatcommerce", "store_manager"]
-    from_e164: str = Field(..., min_length=5, max_length=32)
-    text: str = Field(default="", max_length=8000)
-    tenant_hint: Optional[str] = Field(default=None, max_length=64)
-
-
-@router.post("/whatsapp/inbound")
-async def whatsapp_inbound(body: WhatsAppInboundBody, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    """Receive normalized messages from the Node whatsapp-web.js worker."""
-    if body.channel == "whatcommerce":
-        replies = await handle_whatcommerce_inbound(db, body.from_e164, body.text)
-    else:
-        replies = await handle_store_manager_inbound(
+        replies = process_inbound_whatsapp(
             db,
-            tenant_hint=body.tenant_hint,
-            customer_phone_e164=body.from_e164,
-            text=body.text,
+            wa_chat_id=payload.from_wa_id,
+            body=payload.body,
+            message_type=payload.message_type,
+            media_mimetype=payload.media_mimetype,
+            media_base64=payload.media_base64,
         )
-    return {"replies": replies, "channel": body.channel, "from_e164": body.from_e164}
+    except Exception as e:
+        logger.exception("inbound_whatsapp: %s", e)
+        return InboundMessageOut(
+            replies=["Sorry, something went wrong. Please try again in a moment."]
+        )
+    return InboundMessageOut(replies=[r for r in replies if r])
+
+
+@router.get("/ping")
+def internal_ping() -> dict[str, str]:
+    return {"status": "ok", "auth": "internal"}
+
+
+class BridgeStateIn(BaseModel):
+    status: str = Field(
+        min_length=2,
+        max_length=32,
+        description="ready | qr | error | init",
+    )
+    message: str | None = Field(default=None, max_length=4_000)
+    qr_data: str | None = Field(
+        default=None,
+        max_length=20_000,
+        description="Raw QR payload from whatsapp-web.js (for admin to display)",
+    )
+    phone_e164: str | None = Field(
+        default=None,
+        max_length=32,
+        description="Bot number in E.164; send when status=ready (not on every heartbeat)",
+    )
+
+
+@router.post("/bridge-status", response_model=dict)
+def post_bridge_state(
+    payload: BridgeStateIn,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Heartbeat and session state from the WhatsApp bridge.
+    For status=ready, include phone_e164 once when the session is paired (omit on heartbeats).
+    For status=qr, include qr_data so the admin UI can show the same QR to scan.
+    """
+    st = (payload.status or "").lower().strip()
+    if st not in ("ready", "qr", "error", "init"):
+        st = "error"
+    apply_bridge_report(
+        db,
+        status=st,
+        message=payload.message,
+        qr_data=payload.qr_data,
+        phone_e164=payload.phone_e164,
+    )
+    return {"ok": True, "status": st, "message": payload.message}

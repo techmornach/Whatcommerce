@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+dnf update -y
+dnf install -y git nodejs npm awscli \
+  nss atk at-spi2-atk cups-libs libdrm libxkbcommon mesa-libgbm alsa-lib pango gtk3
+
+AWS_REGION="${aws_region}"
+WORKER_ENV_SECRET_ARN="${worker_env_secret_arn}"
+REPO_URL="${worker_repo_url}"
+REPO_REF="${worker_repo_ref}"
+APP_SUBDIR="${worker_app_subdir}"
+START_COMMAND="${worker_start_command}"
+APP_DIR="/opt/whatcommerce/src/$APP_SUBDIR"
+
+mkdir -p /opt/whatcommerce
+rm -rf /opt/whatcommerce/src
+
+if [ -z "$REPO_URL" ]; then
+  echo "worker_repo_url is empty; exiting."
+  exit 1
+fi
+
+git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" /opt/whatcommerce/src
+
+if [ ! -d "$APP_DIR" ]; then
+  echo "Worker app dir not found: $APP_DIR"
+  exit 1
+fi
+
+if [ -f "$APP_DIR/package-lock.json" ]; then
+  npm ci --prefix "$APP_DIR"
+else
+  npm install --prefix "$APP_DIR"
+fi
+
+if [ -n "$WORKER_ENV_SECRET_ARN" ]; then
+  aws secretsmanager get-secret-value \
+    --secret-id "$WORKER_ENV_SECRET_ARN" \
+    --region "$AWS_REGION" \
+    --query SecretString \
+    --output text > "$APP_DIR/.env"
+fi
+
+CHROME_BIN=""
+for p in /usr/bin/chromium-browser /usr/bin/chromium /usr/bin/google-chrome-stable; do
+  if [ -x "$p" ]; then
+    CHROME_BIN="$p"
+    break
+  fi
+done
+
+cat > /etc/systemd/system/whatcommerce-worker.service <<UNITEOF
+[Unit]
+Description=Whatcommerce WhatsApp worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$${APP_DIR}
+ExecStart=/bin/bash -lc "$${START_COMMAND}"
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+UNITEOF
+
+if [ -n "$CHROME_BIN" ]; then
+  cat >> /etc/systemd/system/whatcommerce-worker.service <<UNITEOF
+Environment=PUPPETEER_EXECUTABLE_PATH=$${CHROME_BIN}
+UNITEOF
+fi
+
+cat >> /etc/systemd/system/whatcommerce-worker.service <<'UNITEOF'
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+
+systemctl daemon-reload
+systemctl enable whatcommerce-worker.service
+systemctl restart whatcommerce-worker.service
