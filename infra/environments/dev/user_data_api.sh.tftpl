@@ -103,7 +103,7 @@ if [ "$BOOTSTRAP_MODE" = "real" ]; then
 
       if [ "$BOOTSTRAP_MODE" = "real" ] && [ -f "$APP_DIR/alembic.ini" ]; then
         if ! (cd "$APP_DIR" && "$API_PYTHON" -m alembic upgrade heads); then
-          BOOTSTRAP_MODE="stub"
+          echo "WARN: alembic upgrade heads failed; continuing with real API startup."
         fi
       fi
     else
