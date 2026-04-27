@@ -21,9 +21,11 @@ _INTENT_SYSTEM = (
     "- **operations** — DB/bot actions or facts: add/edit/list products, orders, stock, "
     "prices, Paystack, subscription, how many products, pure hello with no advice, or "
     "step-by-step tasks with no evaluative ask.\n\n"
-    "If both appear, prefer **analyst** when any evaluative or opinion-seeking part exists.\n\n"
-    "If unsure, prefer **analyst** for how is, what you think, or feedback; else "
-    "**operations**."
+    "If both appear, prefer **operations** unless the user *explicitly* asks for evaluation, "
+    "opinion, critique, ideas, or feedback.\n\n"
+    "If the message includes product/order fields, IDs, prices, stock, or execution steps, choose "
+    "**operations** even if tone is conversational.\n\n"
+    "If unsure, default to **operations**."
 )
 
 _ANALYST_QUICK = re.compile(
@@ -34,6 +36,33 @@ _ANALYST_QUICK = re.compile(
     r"how can i (?:improve|better))",
     re.I,
 )
+
+_OPERATIONS_QUICK = re.compile(
+    r"(\badd(?:ing)?\b.*\bproduct\b|\bcreate\b.*\bproduct\b|\bnew product\b|"
+    r"\bupdate\b.*\bproduct\b|\bedit\b.*\bproduct\b|\bdelete\b.*\bproduct\b|"
+    r"\blist\b.*\bproduct\b|\bshow\b.*\bproduct\b|\bproduct details?\b|"
+    r"\bprice(?:_ngn)?\b|\bcost(?:_price_ngn)?\b|\bstock\b|\bqty\b|\bquantity\b|"
+    r"\bcreate\b.*\border\b|\bnew order\b|\blist\b.*\border\b|\bpaystack\b|\bsubscription\b)",
+    re.I,
+)
+
+
+def _looks_structured_operations_payload(text: str) -> bool:
+    """
+    Detect WhatsApp-style field payloads, e.g.:
+      name: AirPods
+      price: 50000
+      stock: 10
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    fields = ("name", "price", "price_ngn", "cost", "cost_price_ngn", "stock", "qty", "quantity")
+    field_hits = sum(1 for ln in lines if any(ln.startswith(f"{k}:") for k in fields))
+    return field_hits >= 2
 
 
 def classify_store_intent(
@@ -49,6 +78,10 @@ def classify_store_intent(
     if _ANALYST_QUICK.search(text):
         logger.debug("store intent: analyst (quick pattern)")
         return "analyst"
+
+    if _OPERATIONS_QUICK.search(text) or _looks_structured_operations_payload(text):
+        logger.debug("store intent: operations (quick pattern/payload)")
+        return "operations"
 
     if not (settings.openai_api_key or "").strip():
         return "operations"
