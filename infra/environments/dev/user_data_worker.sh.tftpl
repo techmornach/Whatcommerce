@@ -4,6 +4,8 @@ set -euo pipefail
 dnf update -y
 dnf install -y git nodejs npm awscli \
   nss atk at-spi2-atk cups-libs libdrm libxkbcommon mesa-libgbm alsa-lib pango gtk3
+# Best-effort browser install for whatsapp-web.js (fallbacks are handled by app if missing).
+dnf install -y chromium || dnf install -y chromium-headless || true
 
 AWS_REGION="${aws_region}"
 WORKER_ENV_SECRET_ARN="${worker_env_secret_arn}"
@@ -27,6 +29,11 @@ git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" /opt/whatcommerce/src
 if [ ! -d "$APP_DIR" ]; then
   echo "Worker app dir not found: $APP_DIR"
   exit 1
+fi
+
+# Remove repo-bundled browser profile data to avoid Chromium singleton lock crashes.
+if [ -d "$APP_DIR/.wwebjs" ]; then
+  rm -rf "$APP_DIR/.wwebjs"
 fi
 
 if [ -f "$APP_DIR/package-lock.json" ]; then
@@ -77,6 +84,8 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+StandardOutput=journal+console
+StandardError=journal+console
 UNITEOF
 
 if [ -n "$CHROME_BIN" ]; then

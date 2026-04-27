@@ -277,8 +277,12 @@ client.on("message", async (msg) => {
 
 postBridgeReport({ status: "init", message: "Starting WhatsApp client…" });
 
-client.initialize().catch((e) => {
+client.initialize().catch(async (e) => {
   console.error("Failed to start client:", e);
-  postBridgeReport({ status: "error", message: String(e) });
+  try {
+    await postBridgeReport({ status: "error", message: String(e) });
+  } catch {
+    // best effort only
+  }
   process.exit(1);
 });
