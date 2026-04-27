@@ -74,6 +74,9 @@ class Settings(BaseSettings):
 
     # Product images: local folder (dev); production can use a CDN or S3 with same URL prefix.
     product_upload_dir: str = "data/product_uploads"
+    product_uploads_s3_bucket: str | None = None
+    product_uploads_s3_region: str | None = None
+    product_uploads_s3_prefix: str = "products"
     # If set, stored image URLs are absolute (e.g. https://api.example.com) for catalog links.
     public_api_base_url: str | None = None
 

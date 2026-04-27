@@ -16,7 +16,7 @@ from app.models import Order, OrderLine, Product, Tenant
 from app.models.enums import OrderStatus
 from app.services.product_image_storage import (
     generate_catalog_description,
-    resolve_tenant_image_file,
+    read_tenant_image_bytes,
 )
 from app.services.store_context import StoreContext
 
@@ -352,8 +352,8 @@ def _tool_describe_product_image(
             "error": "Provide image_url or product_id with at least one stored image",
         }
 
-    fp = resolve_tenant_image_file(settings, tenant_id=ctx.tenant_id, url_or_path=url)
-    if fp is None:
+    loaded = read_tenant_image_bytes(settings, tenant_id=ctx.tenant_id, url_or_path=url)
+    if loaded is None:
         return {
             "ok": False,
             "error": (
@@ -361,15 +361,7 @@ def _tool_describe_product_image(
             ),
         }
 
-    raw = fp.read_bytes()
-    mimetype = "image/jpeg"
-    suf = fp.suffix.lower()
-    if suf == ".png":
-        mimetype = "image/png"
-    elif suf == ".webp":
-        mimetype = "image/webp"
-    elif suf == ".gif":
-        mimetype = "image/gif"
+    raw, mimetype = loaded
 
     try:
         client = OpenAI(api_key=settings.openai_api_key)

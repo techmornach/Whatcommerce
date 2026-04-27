@@ -100,6 +100,12 @@ if [ "$BOOTSTRAP_MODE" = "real" ]; then
           --query SecretString \
           --output text > "$APP_DIR/.env"
       fi
+
+      if [ "$BOOTSTRAP_MODE" = "real" ] && [ -f "$APP_DIR/alembic.ini" ]; then
+        if ! (cd "$APP_DIR" && "$API_PYTHON" -m alembic upgrade heads); then
+          BOOTSTRAP_MODE="stub"
+        fi
+      fi
     else
       BOOTSTRAP_MODE="stub"
     fi

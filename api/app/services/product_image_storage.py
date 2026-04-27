@@ -1,5 +1,5 @@
 """
-Local filesystem storage for product images (per-tenant subfolders).
+Product image storage (local filesystem by default, optional S3 backend).
 URLs are served under /files/products/{tenant_id}/{filename}.
 """
 
@@ -12,6 +12,8 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from openai import OpenAI
 
 from app.core.config import Settings
@@ -42,6 +44,19 @@ def _extension_for_mimetype(mimetype: str | None) -> str:
     return _MIME_TO_EXT.get(m, "jpg")
 
 
+def _mimetype_for_filename(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if ext in {"jpg", "jpeg"}:
+        return "image/jpeg"
+    if ext == "png":
+        return "image/png"
+    if ext == "webp":
+        return "image/webp"
+    if ext == "gif":
+        return "image/gif"
+    return "application/octet-stream"
+
+
 def public_path_for_tenant_file(tenant_id: int, filename: str) -> str:
     return f"{URL_PREFIX}/{tenant_id}/{filename}"
 
@@ -52,6 +67,27 @@ def public_url_for_path(settings: Settings, path: str) -> str:
     if not base:
         return path
     return f"{base}{path}"
+
+
+def _s3_bucket(settings: Settings) -> str:
+    return (settings.product_uploads_s3_bucket or "").strip()
+
+
+def _is_s3_enabled(settings: Settings) -> bool:
+    return bool(_s3_bucket(settings))
+
+
+def _s3_client(settings: Settings):
+    kwargs = {}
+    if (settings.product_uploads_s3_region or "").strip():
+        kwargs["region_name"] = settings.product_uploads_s3_region.strip()
+    return boto3.client("s3", **kwargs)
+
+
+def _s3_key(tenant_id: int, filename: str, *, prefix: str) -> str:
+    pfx = (prefix or "").strip().strip("/")
+    base = f"{tenant_id}/{filename}"
+    return f"{pfx}/{base}" if pfx else base
 
 
 def save_product_image(
@@ -66,12 +102,26 @@ def save_product_image(
     """
     ext = _extension_for_mimetype(mimetype)
     name = f"{uuid.uuid4().hex}.{ext}"
+    path = public_path_for_tenant_file(tenant_id, name)
+    if _is_s3_enabled(settings):
+        key = _s3_key(tenant_id, name, prefix=settings.product_uploads_s3_prefix)
+        try:
+            _s3_client(settings).put_object(
+                Bucket=_s3_bucket(settings),
+                Key=key,
+                Body=raw,
+                ContentType=(mimetype or _mimetype_for_filename(name)),
+            )
+            return path
+        except (BotoCoreError, ClientError) as e:
+            raise OSError(f"s3 put_object failed: {e}") from e
+
     root = upload_root(settings)
     tdir = root / str(tenant_id)
     tdir.mkdir(parents=True, exist_ok=True)
     fpath = tdir / name
     fpath.write_bytes(raw)
-    return public_path_for_tenant_file(tenant_id, name)
+    return path
 
 
 def parse_product_image_path(url_or_path: str) -> tuple[int, str] | None:
@@ -100,9 +150,7 @@ def parse_product_image_path(url_or_path: str) -> tuple[int, str] | None:
     return tid, fname
 
 
-def resolve_tenant_image_file(
-    settings: Settings, *, tenant_id: int, url_or_path: str
-) -> Path | None:
+def resolve_tenant_image_file(settings: Settings, *, tenant_id: int, url_or_path: str) -> Path | None:
     parsed = parse_product_image_path(url_or_path)
     if parsed is None:
         return None
@@ -113,6 +161,35 @@ def resolve_tenant_image_file(
     if not fp.is_file():
         return None
     return fp
+
+
+def read_tenant_image_bytes(
+    settings: Settings, *, tenant_id: int, url_or_path: str
+) -> tuple[bytes, str] | None:
+    parsed = parse_product_image_path(url_or_path)
+    if parsed is None:
+        return None
+    tid, fname = parsed
+    if tid != tenant_id:
+        return None
+
+    if _is_s3_enabled(settings):
+        key = _s3_key(tid, fname, prefix=settings.product_uploads_s3_prefix)
+        try:
+            res = _s3_client(settings).get_object(Bucket=_s3_bucket(settings), Key=key)
+            raw = res["Body"].read()
+            mt = (res.get("ContentType") or _mimetype_for_filename(fname)).strip()
+            return raw, mt or _mimetype_for_filename(fname)
+        except ClientError:
+            return None
+        except BotoCoreError as e:
+            logger.warning("s3 get_object failed: %s", e)
+            return None
+
+    fp = resolve_tenant_image_file(settings, tenant_id=tenant_id, url_or_path=url_or_path)
+    if fp is None:
+        return None
+    return fp.read_bytes(), _mimetype_for_filename(fp.name)
 
 
 def generate_catalog_description(

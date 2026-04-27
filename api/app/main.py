@@ -3,13 +3,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     admin_auth,
     admin_knowledge,
     admin_ops,
     admin_plans,
+    files,
     admin_settings,
     admin_tenants,
     health,
@@ -19,7 +19,7 @@ from app.api.routes import (
 )
 from app.core.config import get_settings
 from app.services.bootstrap import run_startup_bootstrap
-from app.services.product_image_storage import URL_PREFIX, upload_root
+from app.services.product_image_storage import upload_root
 
 logging.basicConfig(level=logging.INFO)
 
@@ -63,10 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_ops.router)
     app.include_router(internal.router)
     app.include_router(paystack_webhook.router)
-    # Local product images: /files/products/{tenant_id}/{file}
-    root = upload_root(settings)
-    root.mkdir(parents=True, exist_ok=True)
-    app.mount(URL_PREFIX, StaticFiles(directory=str(root)), name="product_uploads")
+    app.include_router(files.router)
     return app
 
 

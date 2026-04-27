@@ -119,6 +119,61 @@ variable "api_env_content" {
   sensitive   = true
 }
 
+variable "rds_enabled" {
+  description = "Whether to provision managed Postgres (RDS)"
+  type        = bool
+  default     = true
+}
+
+variable "rds_db_name" {
+  description = "RDS database name"
+  type        = string
+  default     = "whatcommerce"
+}
+
+variable "rds_username" {
+  description = "RDS master username"
+  type        = string
+  default     = "whatcommerce"
+}
+
+variable "rds_password" {
+  description = "Optional RDS master password (if empty, Terraform generates one)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "rds_allocated_storage" {
+  description = "RDS allocated storage in GB"
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "RDS max autoscaled storage in GB"
+  type        = number
+  default     = 100
+}
+
+variable "rds_engine_version" {
+  description = "Postgres engine version"
+  type        = string
+  default     = "16.3"
+}
+
+variable "rds_backup_retention_period" {
+  description = "RDS backup retention (days)"
+  type        = number
+  default     = 7
+}
+
 variable "web_bucket_prefix" {
   description = "Prefix for web static S3 bucket name"
   type        = string

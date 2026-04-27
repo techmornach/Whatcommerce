@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api/admin/auth", tags=["admin"])
 
 
 class LoginIn(BaseModel):
-    email: str = Field(min_length=3, max_length=512)
-    password: str = Field(min_length=6, max_length=256)
+    email: str = Field(max_length=512)
+    password: str = Field(max_length=256)
 
 
 class TokenOut(BaseModel):
@@ -33,6 +33,11 @@ class AdminMeOut(BaseModel):
 @router.post("/login", response_model=TokenOut)
 def admin_login(data: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
     email = data.email.strip().lower()
+    if len(email) < 3 or len(data.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
     user = db.execute(select(AdminUser).where(AdminUser.email == email)).scalars().first()
     if user is None or not verify_password(data.password, user.password_hash):
         raise HTTPException(

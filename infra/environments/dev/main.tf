@@ -6,6 +6,7 @@ locals {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+  uploads_bucket_name = "${var.uploads_bucket_prefix}-${var.environment}-${var.aws_region}-${data.aws_caller_identity.current.account_id}"
 
   api_env_content = trimspace(
     var.api_env_content != ""
@@ -13,6 +14,53 @@ locals {
     : (var.api_env_file_path != "" && can(file(var.api_env_file_path)) ? file(var.api_env_file_path) : "")
   )
   has_api_env = length(local.api_env_content) > 0
+
+  rds_master_password = (
+    var.rds_enabled
+    ? (var.rds_password != "" ? var.rds_password : random_password.rds_master[0].result)
+    : ""
+  )
+  api_database_url = (
+    var.rds_enabled
+    ? format(
+      "postgresql+psycopg://%s:%s@%s:%d/%s",
+      var.rds_username,
+      local.rds_master_password,
+      module.rds[0].endpoint,
+      module.rds[0].port,
+      var.rds_db_name
+    )
+    : ""
+  )
+  api_env_managed_keys = [
+    "DATABASE_URL",
+    "PRODUCT_UPLOADS_S3_BUCKET",
+    "PRODUCT_UPLOADS_S3_REGION",
+    "PRODUCT_UPLOADS_S3_PREFIX",
+  ]
+  api_env_injected_lines = concat(
+    var.rds_enabled ? ["DATABASE_URL=${local.api_database_url}"] : [],
+    [
+      "PRODUCT_UPLOADS_S3_BUCKET=${local.uploads_bucket_name}",
+      "PRODUCT_UPLOADS_S3_REGION=${var.aws_region}",
+      "PRODUCT_UPLOADS_S3_PREFIX=products",
+    ]
+  )
+  api_env_content_effective = (
+    local.has_api_env
+    ? join(
+      "\n",
+      concat(
+        [
+          for line in split("\n", local.api_env_content) : line if !anytrue([
+            for k in local.api_env_managed_keys : startswith(trimspace(line), "${k}=")
+          ])
+        ],
+        local.api_env_injected_lines
+      )
+    )
+    : ""
+  )
 
   worker_env_content = trimspace(
     var.worker_env_content != ""
@@ -26,6 +74,13 @@ locals {
     trimspace(var.api_domain_name) != "" &&
     trimspace(var.web_domain_name) != ""
   )
+  worker_api_base_url = local.has_custom_domains ? "https://${var.api_domain_name}" : "http://${module.api_alb.alb_dns_name}"
+}
+
+resource "random_password" "rds_master" {
+  count   = var.rds_enabled && var.rds_password == "" ? 1 : 0
+  length  = 24
+  special = false
 }
 
 data "aws_ami" "amazon_linux_2023" {
@@ -86,7 +141,7 @@ module "api_env_secret" {
 
   name          = "${local.name}/api/env"
   description   = "Whatcommerce API .env for ${var.environment}"
-  secret_string = local.api_env_content
+  secret_string = local.api_env_content_effective
   tags          = local.common_tags
 }
 
@@ -121,6 +176,24 @@ data "aws_iam_policy_document" "api_instance_permissions" {
       ]
       resources = [module.api_env_secret[0].secret_arn]
     }
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:ListBucket",
+    ]
+    resources = [module.uploads_bucket.bucket_arn]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${module.uploads_bucket.bucket_arn}/*"]
   }
 }
 
@@ -246,6 +319,27 @@ resource "aws_security_group" "api" {
   })
 }
 
+module "rds" {
+  count  = var.rds_enabled ? 1 : 0
+  source = "../../modules/rds_postgres"
+
+  name                        = local.name
+  vpc_id                      = module.vpc.vpc_id
+  subnet_ids                  = module.vpc.private_subnet_ids
+  allowed_security_group_ids  = [aws_security_group.api.id]
+  database_name               = var.rds_db_name
+  username                    = var.rds_username
+  password                    = local.rds_master_password
+  instance_class              = var.rds_instance_class
+  allocated_storage           = var.rds_allocated_storage
+  max_allocated_storage       = var.rds_max_allocated_storage
+  engine_version              = var.rds_engine_version
+  backup_retention_period     = var.rds_backup_retention_period
+  deletion_protection         = false
+  skip_final_snapshot         = true
+  tags                        = local.common_tags
+}
+
 module "api_asg" {
   source = "../../modules/ec2_asg"
 
@@ -310,6 +404,7 @@ module "worker_asg" {
     worker_repo_ref       = var.worker_repo_ref
     worker_app_subdir     = var.worker_app_subdir
     worker_start_command  = var.worker_start_command
+    worker_api_base_url   = local.worker_api_base_url
   }))
   tags = local.common_tags
 }
@@ -317,7 +412,7 @@ module "worker_asg" {
 module "uploads_bucket" {
   source = "../../modules/s3_uploads"
 
-  bucket_name = "${var.uploads_bucket_prefix}-${var.environment}-${var.aws_region}-${data.aws_caller_identity.current.account_id}"
+  bucket_name = local.uploads_bucket_name
   tags        = local.common_tags
 }
 
@@ -454,4 +549,12 @@ output "worker_asg_name" {
 output "worker_env_secret_arn" {
   value     = var.worker_enabled && local.has_worker_env ? module.worker_env_secret[0].secret_arn : ""
   sensitive = true
+}
+
+output "rds_endpoint" {
+  value = var.rds_enabled ? module.rds[0].endpoint : ""
+}
+
+output "rds_db_name" {
+  value = var.rds_enabled ? module.rds[0].database_name : ""
 }

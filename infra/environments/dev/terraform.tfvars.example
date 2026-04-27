@@ -33,6 +33,15 @@ api_app_subdir        = "api"
 api_uvicorn_app       = "app.main:app"
 api_env_file_path     = "../../../api/.env" # local path used to populate Secrets Manager
 api_env_content       = ""                  # optional raw .env content (alternative to file path)
+rds_enabled           = true
+rds_db_name           = "whatcommerce"
+rds_username          = "whatcommerce"
+rds_password          = "" # leave empty to auto-generate (stored in Terraform state)
+rds_instance_class    = "db.t3.micro"
+rds_allocated_storage = 20
+rds_max_allocated_storage = 100
+rds_engine_version    = "16.3"
+rds_backup_retention_period = 7
 
 worker_enabled          = true
 worker_instance_type    = "t3.large"

@@ -11,6 +11,7 @@ REPO_URL="${worker_repo_url}"
 REPO_REF="${worker_repo_ref}"
 APP_SUBDIR="${worker_app_subdir}"
 START_COMMAND="${worker_start_command}"
+WORKER_API_BASE_URL="${worker_api_base_url}"
 APP_DIR="/opt/whatcommerce/src/$APP_SUBDIR"
 
 mkdir -p /opt/whatcommerce
@@ -40,6 +41,18 @@ if [ -n "$WORKER_ENV_SECRET_ARN" ]; then
     --region "$AWS_REGION" \
     --query SecretString \
     --output text > "$APP_DIR/.env"
+fi
+
+if [ -n "$WORKER_API_BASE_URL" ]; then
+  if [ -f "$APP_DIR/.env" ]; then
+    if grep -q '^WHATCOMMERCE_API_BASE=' "$APP_DIR/.env"; then
+      sed -i.bak "s|^WHATCOMMERCE_API_BASE=.*$|WHATCOMMERCE_API_BASE=$${WORKER_API_BASE_URL}|" "$APP_DIR/.env"
+    else
+      echo "WHATCOMMERCE_API_BASE=$${WORKER_API_BASE_URL}" >> "$APP_DIR/.env"
+    fi
+  else
+    echo "WHATCOMMERCE_API_BASE=$${WORKER_API_BASE_URL}" > "$APP_DIR/.env"
+  fi
 fi
 
 CHROME_BIN=""
