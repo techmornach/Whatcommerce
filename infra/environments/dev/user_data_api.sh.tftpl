@@ -2,9 +2,24 @@
 set -euo pipefail
 
 dnf update -y
-dnf install -y python3 python3-pip git awscli
+dnf install -y python3 python3-pip python3.12 git awscli
 
 mkdir -p /opt/whatcommerce
+
+APP_VENV="/opt/whatcommerce/.venv"
+API_PYTHON="$APP_VENV/bin/python"
+PYTHON_BIN="/usr/bin/python3.12"
+UV_BIN=""
+BOOTSTRAP_MODE="${bootstrap_mode}"
+API_PORT="${api_port}"
+AWS_REGION="${aws_region}"
+API_ENV_SECRET_ARN="${api_env_secret_arn}"
+APP_DIR="/opt/whatcommerce"
+APP_IMPORT="health_app:app"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="/usr/bin/python3"
+fi
 
 install_stub_app() {
 cat > /opt/whatcommerce/health_app.py <<'PYEOF'
@@ -23,15 +38,27 @@ def root():
 PYEOF
 }
 
-python3 -m pip install --upgrade pip
-python3 -m pip install "fastapi>=0.110,<1.0" "uvicorn[standard]>=0.28,<1.0"
+if command -v uv >/dev/null 2>&1; then
+  UV_BIN="$(command -v uv)"
+else
+  if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+    if [ -x "/root/.local/bin/uv" ]; then
+      UV_BIN="/root/.local/bin/uv"
+    elif command -v uv >/dev/null 2>&1; then
+      UV_BIN="$(command -v uv)"
+    fi
+  fi
+fi
 
-BOOTSTRAP_MODE="${bootstrap_mode}"
-API_PORT="${api_port}"
-AWS_REGION="${aws_region}"
-API_ENV_SECRET_ARN="${api_env_secret_arn}"
-APP_DIR="/opt/whatcommerce"
-APP_IMPORT="health_app:app"
+if [ -n "$UV_BIN" ]; then
+  "$UV_BIN" venv "$APP_VENV" --python "$PYTHON_BIN"
+  "$UV_BIN" pip install --python "$API_PYTHON" "fastapi>=0.110,<1.0" "uvicorn[standard]>=0.28,<1.0"
+else
+  # Fallback path when uv bootstrap is unavailable.
+  "$PYTHON_BIN" -m ensurepip --upgrade || true
+  "$PYTHON_BIN" -m pip install "fastapi>=0.110,<1.0" "uvicorn[standard]>=0.28,<1.0" || true
+  API_PYTHON="$PYTHON_BIN"
+fi
 
 if [ "$BOOTSTRAP_MODE" = "real" ]; then
   REPO_URL="${api_repo_url}"
@@ -49,10 +76,24 @@ if [ "$BOOTSTRAP_MODE" = "real" ]; then
       fi
 
       if [ -f "$APP_DIR/pyproject.toml" ]; then
-        python3 -m pip install "$APP_DIR"
+        if [ -n "$UV_BIN" ]; then
+          if ! "$UV_BIN" pip install --python "$API_PYTHON" "$APP_DIR"; then
+            BOOTSTRAP_MODE="stub"
+          fi
+        elif ! "$API_PYTHON" -m pip install "$APP_DIR"; then
+          BOOTSTRAP_MODE="stub"
+        fi
+      elif [ -f "$APP_DIR/requirements.txt" ]; then
+        if [ -n "$UV_BIN" ]; then
+          if ! "$UV_BIN" pip install --python "$API_PYTHON" -r "$APP_DIR/requirements.txt"; then
+            BOOTSTRAP_MODE="stub"
+          fi
+        elif ! "$API_PYTHON" -m pip install -r "$APP_DIR/requirements.txt"; then
+          BOOTSTRAP_MODE="stub"
+        fi
       fi
 
-      if [ -n "$API_ENV_SECRET_ARN" ]; then
+      if [ "$BOOTSTRAP_MODE" = "real" ] && [ -n "$API_ENV_SECRET_ARN" ]; then
         aws secretsmanager get-secret-value \
           --secret-id "$API_ENV_SECRET_ARN" \
           --region "$AWS_REGION" \
@@ -82,7 +123,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$${APP_DIR}
-ExecStart=/usr/local/bin/uvicorn $${APP_IMPORT} --host 0.0.0.0 --port $${API_PORT}
+ExecStart=$${API_PYTHON} -m uvicorn $${APP_IMPORT} --host 0.0.0.0 --port $${API_PORT}
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -107,7 +148,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/whatcommerce
-ExecStart=/usr/local/bin/uvicorn health_app:app --host 0.0.0.0 --port $${API_PORT}
+ExecStart=$${API_PYTHON} -m uvicorn health_app:app --host 0.0.0.0 --port $${API_PORT}
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
