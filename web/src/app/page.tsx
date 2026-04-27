@@ -1,5 +1,8 @@
+"use client";
+
 import { fetchPublicConfig } from "@/lib/api";
 import type { PublicConfig } from "@/lib/api";
+import { useEffect, useState } from "react";
 
 const FALLBACK: PublicConfig = {
   whatsapp_e164: "",
@@ -9,10 +12,31 @@ const FALLBACK: PublicConfig = {
   link_state: "unlinked",
 };
 
-export const revalidate = 30;
+export default function Home() {
+  const [config, setConfig] = useState<PublicConfig>(FALLBACK);
+  const [loaded, setLoaded] = useState(false);
 
-export default async function Home() {
-  const config = (await fetchPublicConfig()) ?? FALLBACK;
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      const next = await fetchPublicConfig();
+      if (cancelled) return;
+      if (next) setConfig(next);
+      setLoaded(true);
+    };
+
+    void load();
+    const t = window.setInterval(() => {
+      void load();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, []);
+
   const ready = config.bot_connected && (config.whatsapp_href || "").length > 0;
 
   return (
@@ -57,7 +81,7 @@ export default async function Home() {
                   </a>
                 ) : (
                   <span className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm text-slate-500">
-                    WhatsApp link unavailable
+                    {loaded ? "WhatsApp link unavailable" : "Checking WhatsApp link..."}
                   </span>
                 )}
               </div>
