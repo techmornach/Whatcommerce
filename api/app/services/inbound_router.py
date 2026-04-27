@@ -144,14 +144,10 @@ def process_inbound_whatsapp(
     if message_id:
         ev_meta = {**ev_meta, "message_id": message_id}
     if ev_meta.get("empty") and not (canonical or "").strip():
-        return [
-            "Please send a *text* message, *voice* note, or *image* to continue."
-        ]
+        return []
     text = (canonical or "").strip()
     if not text:
-        return [
-            "Please send a *text* message, *voice* note, or *image* to continue."
-        ]
+        return []
     if ev_meta.get("router_short_circuit"):
         return [text]
 

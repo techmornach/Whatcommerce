@@ -100,11 +100,19 @@ def run_onboarding_agent(
             INPUT_GUARD_REFUSAL, public_api_base_url=public_api_base_url
         )
 
+    snapshot: dict = {}
     try:
-        snap = json.dumps(build_snapshot(db, session), default=str, indent=2)[:12_000]
+        snapshot = build_snapshot(db, session)
+        snap = json.dumps(snapshot, default=str, indent=2)[:12_000]
     except Exception as e:
         logger.exception("onboarding snapshot: %s", e)
         snap = "{}"
+
+    missing = snapshot.get("missing_fields") if isinstance(snapshot, dict) else []
+    if not isinstance(missing, list):
+        missing = []
+    missing_clean = [str(x).strip() for x in missing if str(x).strip()]
+    missing_csv = ", ".join(missing_clean) if missing_clean else "(none)"
 
     base = get_onboarding_system_base(settings)
     system = f"{base}\n\n---\n*Current signup state (from database):*\n```json\n{snap}\n```\n"
@@ -114,6 +122,17 @@ def run_onboarding_agent(
         "every reply; they already see the chat history. "
         "Address the *latest user message*; use the snapshot for saved fields, not for "
         "inventing names."
+    )
+    system += (
+        "\n\n*Strict state rules (must follow):*\n"
+        f"- Missing fields right now: {missing_csv}\n"
+        "- Never ask for a field that is already present in snapshot.collected.\n"
+        "- If plan is already collected, do not ask for plan again.\n"
+        "- If billing_interval is already collected, do not ask for billing interval again.\n"
+        "- If missing_fields is empty and payment.stage is collecting, call "
+        "create_paystack_checkout (or reuse existing checkout if already awaiting_payment).\n"
+        "- If awaiting_payment, remind user to complete payment with existing link; do not loop "
+        "through onboarding questions."
     )
     messages: list[dict] = [
         {"role": "system", "content": system},
