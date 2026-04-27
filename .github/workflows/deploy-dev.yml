@@ -36,8 +36,15 @@ jobs:
         run: |
           missing=0
           for name in AWS_REGION_DEV WEB_BUCKET_DEV WEB_CLOUDFRONT_DISTRIBUTION_ID_DEV NEXT_PUBLIC_API_URL_DEV WORKER_ASG_NAME_DEV; do
-            if [ -z "${!name:-}" ]; then
+            value="$(echo "${!name:-}" | tr -d '[:space:]')"
+            value_lc="$(echo "$value" | tr '[:upper:]' '[:lower:]')"
+            if [ -z "$value" ]; then
               echo "::error::Missing required repository variable: $name"
+              missing=1
+              continue
+            fi
+            if [ "$value_lc" = "null" ] || [ "$value_lc" = "none" ] || [ "$value_lc" = "undefined" ]; then
+              echo "::error::Invalid repository variable $name: value cannot be '$value'"
               missing=1
             fi
           done
@@ -92,7 +99,12 @@ jobs:
       - name: Trigger worker ASG instance refresh
         id: refresh
         run: |
-          ASG_NAME="${WORKER_ASG_NAME_DEV}"
+          ASG_NAME="$(echo "${WORKER_ASG_NAME_DEV}" | xargs)"
+          ASG_NAME_LC="$(echo "$ASG_NAME" | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$ASG_NAME" ] || [ "$ASG_NAME_LC" = "null" ] || [ "$ASG_NAME_LC" = "none" ] || [ "$ASG_NAME_LC" = "undefined" ]; then
+            echo "::error::WORKER_ASG_NAME_DEV is not set to a valid ASG name."
+            exit 1
+          fi
           REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name "$ASG_NAME" \
             --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}' \
