@@ -32,10 +32,8 @@ locals {
     )
     : ""
   )
-  api_public_base_url = local.has_custom_domains ? "https://${var.api_domain_name}" : "http://${module.api_alb.alb_dns_name}"
   api_env_managed_keys = [
     "DATABASE_URL",
-    "PUBLIC_API_BASE_URL",
     "PRODUCT_UPLOADS_S3_BUCKET",
     "PRODUCT_UPLOADS_S3_REGION",
     "PRODUCT_UPLOADS_S3_PREFIX",
@@ -43,7 +41,6 @@ locals {
   api_env_injected_lines = concat(
     var.rds_enabled ? ["DATABASE_URL=${local.api_database_url}"] : [],
     [
-      "PUBLIC_API_BASE_URL=${local.api_public_base_url}",
       "PRODUCT_UPLOADS_S3_BUCKET=${local.uploads_bucket_name}",
       "PRODUCT_UPLOADS_S3_REGION=${var.aws_region}",
       "PRODUCT_UPLOADS_S3_PREFIX=products",
@@ -326,21 +323,21 @@ module "rds" {
   count  = var.rds_enabled ? 1 : 0
   source = "../../modules/rds_postgres"
 
-  name                       = local.name
-  vpc_id                     = module.vpc.vpc_id
-  subnet_ids                 = module.vpc.private_subnet_ids
-  allowed_security_group_ids = [aws_security_group.api.id]
-  database_name              = var.rds_db_name
-  username                   = var.rds_username
-  password                   = local.rds_master_password
-  instance_class             = var.rds_instance_class
-  allocated_storage          = var.rds_allocated_storage
-  max_allocated_storage      = var.rds_max_allocated_storage
-  engine_version             = var.rds_engine_version
-  backup_retention_period    = var.rds_backup_retention_period
-  deletion_protection        = false
-  skip_final_snapshot        = true
-  tags                       = local.common_tags
+  name                        = local.name
+  vpc_id                      = module.vpc.vpc_id
+  subnet_ids                  = module.vpc.private_subnet_ids
+  allowed_security_group_ids  = [aws_security_group.api.id]
+  database_name               = var.rds_db_name
+  username                    = var.rds_username
+  password                    = local.rds_master_password
+  instance_class              = var.rds_instance_class
+  allocated_storage           = var.rds_allocated_storage
+  max_allocated_storage       = var.rds_max_allocated_storage
+  engine_version              = var.rds_engine_version
+  backup_retention_period     = var.rds_backup_retention_period
+  deletion_protection         = false
+  skip_final_snapshot         = true
+  tags                        = local.common_tags
 }
 
 module "api_asg" {
