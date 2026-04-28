@@ -3,7 +3,7 @@ import wweb from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
 
 const { Client, LocalAuth } = wweb;
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -33,6 +33,8 @@ const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || "";
 const DISPATCH_PORT = process.env.DISPATCH_PORT || "3001";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const BRIDGE_HEARTBEAT_MS = 45_000;
+const SESSION_DIR = join(__dirname, ".wwebjs");
+const SESSION_RESET_MARKER = join(__dirname, ".wwebjs-reset-once");
 const INBOUND_DEDUPE_TTL_MS = 5 * 60 * 1000;
 const seenInboundMessageIds = new Map();
 
@@ -46,6 +48,21 @@ function seenRecently(messageId) {
   if (seenInboundMessageIds.has(id)) return true;
   seenInboundMessageIds.set(id, now);
   return false;
+}
+
+function resetSessionForRecovery() {
+  try {
+    rmSync(SESSION_DIR, { recursive: true, force: true });
+  } catch {}
+}
+
+// One-shot recovery path: if previous boot hit startup protocol error, wipe local session.
+if (existsSync(SESSION_RESET_MARKER)) {
+  console.log("Recovery marker detected; resetting WhatsApp local session.");
+  resetSessionForRecovery();
+  try {
+    unlinkSync(SESSION_RESET_MARKER);
+  } catch {}
 }
 
 async function postBridgeReport({ status, message, qr_data, phone_e164 }) {
@@ -282,6 +299,15 @@ postBridgeReport({ status: "init", message: "Starting WhatsApp client…" });
 
 client.initialize().catch(async (e) => {
   console.error("Failed to start client:", e);
+  const msg = String(e || "");
+  if (
+    /ProtocolError/i.test(msg) &&
+    /Execution context was destroyed/i.test(msg)
+  ) {
+    try {
+      writeFileSync(SESSION_RESET_MARKER, String(Date.now()));
+    } catch {}
+  }
   try {
     await postBridgeReport({ status: "error", message: String(e) });
   } catch {}
