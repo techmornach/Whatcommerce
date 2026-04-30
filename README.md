@@ -13,7 +13,7 @@
 ## 🔐 Admin Access
 
 * **Admin Panel:**
-  https://whatcommerce.play.jaraflytech.com/
+  https://whatcommerce.play.jaraflytech.com/admin
 
 * **Credentials:**
 
