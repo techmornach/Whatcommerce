@@ -1,3 +1,11 @@
+
+
+LIVE DEMO: https://youtu.be/ODy3kcZvczk
+LIVE LINK : https://whatcommerce.play.jaraflytech.com/
+ADMIN: https://whatcommerce.play.jaraflytech.com/
+username: admin@example.com
+password: ChangeMe1!
+
 # Whatcommerce
 
 WhatsApp-first commerce for small vendors: **FastAPI** backend, **Next.js** marketing + super admin, **whatsapp-web.js** bridge, **Paystack** billing (onboarding + webhook activation).
