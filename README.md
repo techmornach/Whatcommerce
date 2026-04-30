@@ -1,10 +1,26 @@
 
 
-LIVE DEMO: https://youtu.be/ODy3kcZvczk
-LIVE LINK : https://whatcommerce.play.jaraflytech.com/
-ADMIN: https://whatcommerce.play.jaraflytech.com/
-username: admin@example.com
-password: ChangeMe1!
+## 🚀 Live Demo
+
+* 🎥 **Video Walkthrough:**
+  https://youtu.be/ODy3kcZvczk
+
+* 🌐 **Live Application:**
+  https://whatcommerce.play.jaraflytech.com/
+
+---
+
+## 🔐 Admin Access
+
+* **Admin Panel:**
+  https://whatcommerce.play.jaraflytech.com/
+
+* **Credentials:**
+
+  * **Username:** `admin@example.com`
+  * **Password:** `ChangeMe1!`
+
+---
 
 # Whatcommerce
 
